@@ -1,0 +1,86 @@
+{
+  "app": "personal-life-os",
+  "schemaVersion": 1,
+  "exportedAt": "2026-11-13T19:11:25.064628+00:00",
+  "appVersion": "1.0.0",
+  "counts": {
+    "items": 1,
+    "spaces": 1,
+    "itemSpaceLinks": 0,
+    "itemRelationships": 0,
+    "projectDetails": 0,
+    "noteDetails": 0,
+    "returnNoteSettings": 0,
+    "entertainmentDetails": 0,
+    "inboxEntries": 0,
+    "weeklyPlans": 0,
+    "weeklyEntries": 0,
+    "dailyPlans": 0,
+    "dailyPeriods": 0,
+    "dailyEntries": 0,
+    "periodSettings": 0,
+    "recurrenceRules": 0,
+    "occurrenceStates": 0,
+    "routines": 0,
+    "routineItems": 0,
+    "routineExecutions": 0,
+    "routineExecutionSteps": 0,
+    "weeklyReviews": 0,
+    "resumeMarkers": 0,
+    "resumeSuggestionStates": 0,
+    "activityHistory": 0,
+    "appSettings": 0
+  },
+  "checksum": "sha256:707a5aba221e38777bea436e7bc4eae1089c594ac8eb40e24b1d3f5d5707471f",
+  "data": {
+    "items": [
+      {
+        "id": "restored-item-1",
+        "type": "task",
+        "title": "عنصر مستعاد من الملف",
+        "description": "",
+        "status": "active",
+        "createdAt": 1794597085064,
+        "updatedAt": 1794597085064
+      }
+    ],
+    "spaces": [
+      {
+        "id": "restored-space-1",
+        "name": "مساحة المستعادة",
+        "description": "",
+        "sortOrder": "1",
+        "createdAt": 1794597085064
+      }
+    ],
+    "itemSpaceLinks": [],
+    "itemRelationships": [],
+    "projectDetails": [],
+    "noteDetails": [],
+    "returnNoteSettings": [],
+    "entertainmentDetails": [],
+    "inboxEntries": [],
+    "weeklyPlans": [],
+    "weeklyEntries": [],
+    "dailyPlans": [],
+    "dailyPeriods": [],
+    "dailyEntries": [],
+    "periodSettings": [],
+    "recurrenceRules": [],
+    "occurrenceStates": [],
+    "routines": [],
+    "routineItems": [],
+    "routineExecutions": [],
+    "routineExecutionSteps": [],
+    "weeklyReviews": [],
+    "resumeMarkers": [],
+    "resumeSuggestionStates": [],
+    "activityHistory": [],
+    "appSettings": []
+  },
+  "settings": {
+    "user.name": "سارة",
+    "user.registeredAt": 1794597085064,
+    "ui.language": "ar"
+  }
+}

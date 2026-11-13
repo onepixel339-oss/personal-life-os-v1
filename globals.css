@@ -1,0 +1,333 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Living Daybook extended tokens */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-context: var(--surface-context);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-primary-deep: var(--primary-deep);
+  --color-primary-soft: var(--primary-soft);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-lavender-soft: var(--lavender-soft);
+  --color-border-strong: var(--border-strong);
+  --color-terracotta: var(--primary);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --shadow-warm: var(--shadow-warm);
+}
+
+/* ============ Living Daybook 2.0 — Light ============ */
+:root {
+  --radius: 0.75rem;
+  --app-font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --app-font-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --canvas: #e9dfd2;
+  --surface: #fffaf3;
+  --surface-raised: #fffdf8;
+  --surface-sidebar: #f1e6d8;
+  --surface-context: #fcf5ed;
+  --ink: #3a2d27;
+  --ink-soft: #6e5143;
+  --muted: #9a8172;
+  --primary: #a96748;
+  --primary-deep: #875538;
+  --primary-soft: #ead2bc;
+  --sage: #7b8060;
+  --sage-soft: #e9e3d4;
+  --lavender-soft: #e7e4ed;
+  --border: #eadbcb;
+  --border-strong: #dfb28e;
+  --shadow-warm: 0 10px 30px rgba(94, 62, 45, 0.10);
+
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--ink);
+  --primary-foreground: #fffaf3;
+  --secondary: #f1e6d8;
+  --secondary-foreground: #6e5143;
+  --muted: #efe5d8;
+  --muted-foreground: #9a8172;
+  --accent: #fcf5ed;
+  --accent-foreground: #3a2d27;
+  --destructive: #a5533c;
+  --destructive-foreground: #fffaf3;
+  --border: #eadbcb;
+  --input: #e2d2bf;
+  --ring: #a96748;
+  --chart-1: #a96748;
+  --chart-2: #7b8060;
+  --chart-3: #dfb28e;
+  --chart-4: #9a8172;
+  --chart-5: #c4a35a;
+  --sidebar: #f1e6d8;
+  --sidebar-foreground: #3a2d27;
+  --sidebar-primary: #a96748;
+  --sidebar-primary-foreground: #fffaf3;
+  --sidebar-accent: #ead2bc;
+  --sidebar-accent-foreground: #6e5143;
+  --sidebar-border: #e0cfc0;
+  --sidebar-ring: #a96748;
+}
+
+/* ============ Living Daybook 2.0 — Warm Dark ============ */
+.dark {
+  --canvas: #261e18;
+  --surface: #312820;
+  --surface-raised: #3a2f26;
+  --surface-sidebar: #211a14;
+  --surface-context: #362c23;
+  --ink: #ece0d1;
+  --ink-soft: #cbb9a5;
+  --muted: #a5907c;
+  --primary: #cb8a63;
+  --primary-deep: #e0a67f;
+  --primary-soft: #4b382a;
+  --sage: #9aa284;
+  --sage-soft: #383c2e;
+  --lavender-soft: #363142;
+  --border: #4a3c31;
+  --border-strong: #6e5644;
+  --shadow-warm: 0 10px 30px rgba(0, 0, 0, 0.35);
+
+  --background: var(--canvas);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--ink);
+  --primary-foreground: #2a1f18;
+  --secondary: #3a2f26;
+  --secondary-foreground: #cbb9a5;
+  --muted: #3a2f26;
+  --muted-foreground: #a5907c;
+  --accent: #362c23;
+  --accent-foreground: #ece0d1;
+  --destructive: #c96f54;
+  --destructive-foreground: #2a1f18;
+  --border: #4a3c31;
+  --input: #55453a;
+  --ring: #cb8a63;
+  --chart-1: #cb8a63;
+  --chart-2: #9aa284;
+  --chart-3: #6e5644;
+  --chart-4: #a5907c;
+  --chart-5: #c4a35a;
+  --sidebar: #211a14;
+  --sidebar-foreground: #ece0d1;
+  --sidebar-primary: #cb8a63;
+  --sidebar-primary-foreground: #2a1f18;
+  --sidebar-accent: #3a2f26;
+  --sidebar-accent-foreground: #cbb9a5;
+  --sidebar-border: #3c3028;
+  --sidebar-ring: #cb8a63;
+}
+
+/* ============ Arabic (RTL) typography & flow ============ */
+[dir="rtl"] {
+  --app-font-sans: var(--font-arabic-sans), var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --app-font-serif: var(--font-arabic-serif), var(--font-newsreader), Georgia, serif;
+}
+
+/* Arabic script must never be letter-spaced (breaks letter connections). */
+[dir="rtl"] * {
+  letter-spacing: normal !important;
+}
+
+/* Synthetic italics shear Arabic glyphs — use upright text instead. */
+[dir="rtl"] .italic,
+[dir="rtl"] em {
+  font-style: normal;
+}
+
+/* Flip physical alignment utilities (unlayered CSS wins over Tailwind layers). */
+[dir="rtl"] .text-left {
+  text-align: right;
+}
+[dir="rtl"] .text-right {
+  text-align: left;
+}
+[dir="rtl"] .ml-auto {
+  margin-left: 0;
+  margin-right: auto;
+}
+[dir="rtl"] .ml-0 {
+  margin-left: 0;
+  margin-right: 0;
+}
+[dir="rtl"] .ml-1 {
+  margin-left: 0;
+  margin-right: 0.25rem;
+}
+[dir="rtl"] .ml-1\.5 {
+  margin-left: 0;
+  margin-right: 0.375rem;
+}
+[dir="rtl"] .ml-2 {
+  margin-left: 0;
+  margin-right: 0.5rem;
+}
+[dir="rtl"] .mr-1 {
+  margin-left: 0.25rem;
+  margin-right: 0;
+}
+[dir="rtl"] .mr-2 {
+  margin-left: 0.5rem;
+  margin-right: 0;
+}
+[dir="rtl"] .pl-3 {
+  padding-left: 0;
+  padding-right: 0.75rem;
+}
+[dir="rtl"] .left-1 {
+  left: auto;
+  right: 0.25rem;
+}
+[dir="rtl"] .left-2 {
+  left: auto;
+  right: 0.5rem;
+}
+[dir="rtl"] .left-3 {
+  left: auto;
+  right: 0.75rem;
+}
+[dir="rtl"] .right-1 {
+  right: auto;
+  left: 0.25rem;
+}
+[dir="rtl"] .right-2 {
+  right: auto;
+  left: 0.5rem;
+}
+[dir="rtl"] .left-0 {
+  left: auto;
+  right: 0;
+}
+[dir="rtl"] .right-0 {
+  right: auto;
+  left: 0;
+}
+
+/* Font utilities defined directly (Tailwind v4 theme vars with next/font
+   references don't resolve reliably) — they follow the active language. */
+@layer base {
+  body {
+    font-family: var(--app-font-sans);
+  }
+}
+@layer utilities {
+  .font-sans {
+    font-family: var(--app-font-sans);
+  }
+  .font-serif {
+    font-family: var(--app-font-serif);
+  }
+  .font-mono {
+    font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01" on;
+  }
+  ::selection {
+    background: var(--primary-soft);
+    color: var(--ink);
+  }
+  /* warm subtle scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+    background-clip: padding-box;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* daybook paper texture — extremely subtle, pure CSS */
+  .daybook-paper {
+    background-image: radial-gradient(circle at 12% 8%, rgba(169, 103, 72, 0.035), transparent 42%),
+      radial-gradient(circle at 88% 92%, rgba(123, 128, 96, 0.04), transparent 45%);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .focus-warm {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
