@@ -20,6 +20,9 @@ export const SETTING_KEYS = {
   lastBackupAt: "backup.lastExportAt",
   restoreSnapshot: "restore.snapshot",
   backupNudgeDismissed: "backup.nudge.dismissed",
+  /* v1.3 — the weekly backup nudge: at most one line per week, and only
+     after a week that actually had closures (a lived week, not a calendar one) */
+  backupWeeklyNudgeAt: "backup.weeklyNudge.at",
   recentSearches: "search.recent",
   /* v1.2 — life-day, clock hints, Friday ritual, Ramadan rhythm */
   tzLastOffset: "clock.tzLastOffset",

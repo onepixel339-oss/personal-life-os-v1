@@ -3,9 +3,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Moon, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Moon, Plus, RefreshCw, Sunrise } from "lucide-react";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import {
+  useDayClosed,
+  useLastClosedDay,
   useLifeToday,
   useMinuteTick,
   useResumeSuggestions,
@@ -14,6 +16,7 @@ import {
 } from "@/lib/lifeos/hooks";
 import {
   addDays,
+  diffDays,
   formatDate,
   formatTime,
   nowMinutes,
@@ -68,6 +71,16 @@ export function TodayScreen() {
   }
 
   const suggestions = useResumeSuggestions({ kind: "app_open" });
+
+  // v1.3: welcome back — after a 4+ day gap, one warm line. Never a debt
+  // list, never a number: the page is simply new. It heals itself — the
+  // moment today is closed, the gap is zero and the line is gone.
+  const closedToday = useDayClosed(todayDate);
+  const lastClosedDay = useLastClosedDay(realToday);
+  const welcomeBackDays =
+    isToday && !closedToday && lastClosedDay
+      ? diffDays(lastClosedDay, realToday)
+      : 0;
 
   // Current period + the overnight link (D1)
   const currentPeriodId = useMemo(() => {
@@ -184,6 +197,15 @@ export function TodayScreen() {
                 {t("today.openToday")}
               </Button>
             </div>
+          </div>
+        ) : null}
+
+        {welcomeBackDays >= 4 ? (
+          <div className="flex items-center gap-2.5 rounded-xl border border-sage/40 bg-sage/10 px-4 py-2.5">
+            <Sunrise className="h-4 w-4 shrink-0 text-sage" />
+            <p className="text-[13px] leading-relaxed text-ink-soft">
+              {t("today.welcomeBack")}
+            </p>
           </div>
         ) : null}
 

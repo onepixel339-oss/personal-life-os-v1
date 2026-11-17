@@ -5,6 +5,7 @@
 
 import { db } from "../db";
 import { emitChange } from "../events";
+import { addDays, todayLocal } from "../dates";
 import { ensurePlan } from "./planning-service";
 import type { Result } from "../types";
 import { ok } from "../types";
@@ -37,4 +38,22 @@ export async function getClosedMap(
     if (typeof p.closedAt === "number") map.set(p.date, p.closedAt);
   }
   return map;
+}
+
+/** Any closure at all? (v1.3 — gates the graduated first-run cards:
+ *  the install hint waits for the first قفلة, when the habit is real.) */
+export async function hasAnyClosure(): Promise<boolean> {
+  const count = await db.dailyPlans
+    .filter((p) => typeof p.closedAt === "number")
+    .count();
+  return count > 0;
+}
+
+/** At least one day closed in the last 7 days? (v1.3 — the backup nudge
+ *  only speaks to people who actually lived a week in here.) */
+export async function closedInLast7Days(): Promise<boolean> {
+  const today = todayLocal();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, -i));
+  const map = await getClosedMap(days);
+  return map.size > 0;
 }

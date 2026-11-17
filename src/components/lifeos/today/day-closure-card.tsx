@@ -46,7 +46,20 @@ export function DayClosureCard({ date }: { date: string }) {
         variant="outline"
         className="mt-2.5 h-10 rounded-full border-border bg-surface px-5"
         onClick={() =>
-          void run(closeDay(date), { quiet: true })
+          void (async () => {
+            const res = await run(closeDay(date), { quiet: true });
+            // v1.3: a small local haptic — the day ends with a felt click,
+            // like a notebook cover snapping shut. navigator.vibrate is
+            // device-local and asks no permission; if the browser doesn't
+            // support it, the closure is just as valid in silence.
+            if (
+              res.ok &&
+              typeof navigator !== "undefined" &&
+              typeof navigator.vibrate === "function"
+            ) {
+              navigator.vibrate(40);
+            }
+          })()
         }
       >
         <MoonStar className="h-4 w-4" /> {t("closure.cta")}

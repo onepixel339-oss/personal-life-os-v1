@@ -10,7 +10,8 @@ import {
   buildRulesById,
   buildStatesByKey,
 } from "./services/recurrence-service";
-import { resolvePeriodsForDate, proposePeriodSettingId } from "./services/planning-service";
+import { resolvePeriodsForDate } from "./services/planning-service";
+import { buildTodayData, type TodayData } from "./services/today-assembly";
 import { computeSuggestions, type ResumeTrigger } from "./services/resume-service";
 import { buildWeekInsights, type InsightsInput } from "./services/review-insights";
 import type { StripEntry } from "./services/week-strip";
@@ -115,35 +116,9 @@ export function useLifeToday(): string {
   return lifeDayFor(prefs);
 }
 
-export interface TodayRow {
-  key: string;
-  kind: "entry" | "occurrence";
-  entry?: DailyEntry;
-  occurrence?: Occurrence;
-  item?: Item;
-  routine?: Routine;
-  title: string;
-  executionStatus: "pending" | "completed" | "skipped" | "partial";
-  periodId?: string;
-  periodSettingId?: string;
-  startTime?: string;
-  endTime?: string;
-  durationMinutes?: number;
-  occurrenceKey?: string;
-  isRecurring: boolean;
-}
-
-export interface TodayData {
-  date: string;
-  plan: DailyPlan | undefined;
-  periods: (ResolvedPeriod & { settingId?: string })[];
-  byPeriod: Map<string, TodayRow[]>;
-  unplaced: TodayRow[];
-  allRows: TodayRow[];
-  itemsById: Map<string, Item>;
-  routinesById: Map<string, Routine>;
-  materializedOccurrenceKeys: Set<string>;
-}
+/* TodayRow / TodayData + the pure row assembly live in services/today-assembly
+   since v1.3, so the rendering layer can be integration-tested directly. */
+export type { TodayRow, TodayData } from "./services/today-assembly";
 
 export function useTodayData(date: string): TodayData | undefined {
   const plan = useLiveQuery(
@@ -200,117 +175,16 @@ export function useTodayData(date: string): TodayData | undefined {
       return undefined;
     }
     void tick;
-    const itemsById = new Map(items.map((i) => [i.id, i]));
-    const routinesById = new Map(routines.map((r) => [r.id, r]));
-    const materializedOccurrenceKeys = new Set(
-      entries
-        .filter((e) => e.occurrenceKey)
-        .map((e) => e.occurrenceKey as string)
-    );
-
-    const statesByKey = buildStatesByKey(occStates);
-    const rulesById = buildRulesById(rules);
-    const occurrences: Occurrence[] = [];
-    for (const rule of rules) {
-      if (!rule.itemId && !rule.routineId) continue;
-      occurrences.push(...expand(rule, date, date, statesByKey, rulesById));
-    }
-    const virtualOccurrences = occurrences.filter(
-      (o) =>
-        o.date === date &&
-        !o.cancelled &&
-        !materializedOccurrenceKeys.has(o.occurrenceKey)
-    );
-
-    const periodBySetting = new Map<string, ResolvedPeriod>();
-    for (const p of periodRows) {
-      if (p.settingId) periodBySetting.set(p.settingId, p);
-    }
-
-    const rows: TodayRow[] = [];
-    for (const entry of entries) {
-      const item = entry.itemId ? itemsById.get(entry.itemId) : undefined;
-      const routine = entry.routineId ? routinesById.get(entry.routineId) : undefined;
-      rows.push({
-        key: `entry:${entry.id}`,
-        kind: "entry",
-        entry,
-        item,
-        routine,
-        title: item?.title ?? routine?.name ?? "",
-        executionStatus: entry.executionStatus,
-        periodId: entry.periodId,
-        startTime: entry.startTime,
-        endTime: entry.endTime,
-        durationMinutes: entry.durationMinutes,
-        occurrenceKey: entry.occurrenceKey,
-        isRecurring: !!entry.occurrenceKey,
-      });
-    }
-    for (const occ of virtualOccurrences) {
-      const item = occ.itemId ? itemsById.get(occ.itemId) : undefined;
-      const routine = occ.routineId ? routinesById.get(occ.routineId) : undefined;
-      let periodId: string | undefined;
-      if (occ.periodSettingId) {
-        periodId = periodBySetting.get(occ.periodSettingId)?.id;
-      } else if (occ.startTime) {
-        const proposed = proposePeriodSettingId(periodRows, occ.startTime);
-        periodId = proposed ? periodBySetting.get(proposed)?.id : undefined;
-      }
-      rows.push({
-        key: `occ:${occ.occurrenceKey}`,
-        kind: "occurrence",
-        occurrence: occ,
-        item,
-        routine,
-        title: occ.title || item?.title || routine?.name || "",
-        executionStatus: occ.executionStatus,
-        periodId,
-        periodSettingId: occ.periodSettingId,
-        startTime: occ.startTime,
-        endTime: occ.endTime,
-        durationMinutes: occ.durationMinutes,
-        occurrenceKey: occ.occurrenceKey,
-        isRecurring: true,
-      });
-    }
-
-    const byPeriod = new Map<string, TodayRow[]>();
-    for (const p of periodRows) byPeriod.set(p.id, []);
-    const unplaced: TodayRow[] = [];
-    const sortRows = (a: TodayRow, b: TodayRow) =>
-      (a.entry?.sortOrder ?? "") < (b.entry?.sortOrder ?? "") ? -1 : 1;
-    for (const row of rows) {
-      if (row.periodId && byPeriod.has(row.periodId)) {
-        byPeriod.get(row.periodId)!.push(row);
-      } else {
-        unplaced.push(row);
-      }
-    }
-    for (const list of byPeriod.values()) {
-      list.sort((a, b) => {
-        const sa = a.entry?.sortOrder ?? a.occurrenceKey ?? "";
-        const sb = b.entry?.sortOrder ?? b.occurrenceKey ?? "";
-        return sa < sb ? -1 : sa > sb ? 1 : 0;
-      });
-      void sortRows;
-    }
-    unplaced.sort((a, b) => {
-      const sa = a.entry?.sortOrder ?? a.occurrenceKey ?? "";
-      const sb = b.entry?.sortOrder ?? b.occurrenceKey ?? "";
-      return sa < sb ? -1 : sa > sb ? 1 : 0;
-    });
-    return {
+    return buildTodayData({
       date,
       plan,
-      periods: periodRows,
-      byPeriod,
-      unplaced,
-      allRows: rows,
-      itemsById,
-      routinesById,
-      materializedOccurrenceKeys,
-    };
+      periodRows,
+      entries,
+      items,
+      routines,
+      rules,
+      occStates,
+    });
   }, [date, plan, periodRows, entries, items, routines, rules, occStates, tick]);
 }
 
@@ -824,6 +698,18 @@ export function useDayClosed(date: string | null): boolean | undefined {
     const plan = await db.dailyPlans.where("date").equals(date).first();
     return typeof plan?.closedAt === "number";
   }, [date]);
+}
+
+/** Most recent closed day strictly before `date` (v1.3 — powers the
+ *  welcome-back line: a 4+ day gap deserves one warm sentence, not a debt). */
+export function useLastClosedDay(before: string): string | null | undefined {
+  return useLiveQuery(async () => {
+    const rows = await db.dailyPlans
+      .filter((p) => typeof p.closedAt === "number" && p.date < before)
+      .toArray();
+    if (rows.length === 0) return null;
+    return rows.reduce((a, b) => (a.date > b.date ? a : b)).date;
+  }, [before]);
 }
 
 /** The review's three questions, answered from the week's own data (v1.2). */

@@ -7,6 +7,7 @@ import {
   ArrowRightLeft,
   CalendarDays,
   Clock,
+  Coffee,
   MoreHorizontal,
   Pencil,
   Repeat,
@@ -50,6 +51,7 @@ import {
 } from "@/lib/lifeos/services/planning-service";
 import {
   cancelOccurrence,
+  setRulePeriod,
   setOccurrenceExecution,
   disableRule,
   endRuleBefore,
@@ -84,7 +86,17 @@ export function TodayEntryRow({
   const periodOfRow = periods.find((p) => p.id === row.periodId);
   const suggested = periods.find((p) => p.settingId === suggestedSettingId);
   const done = row.executionStatus === "completed";
-  const skipped = row.executionStatus === "skipped";  useEffect(() => {
+  const skipped = row.executionStatus === "skipped";
+  // v1.3 "خلّيه يعيش هنا؟" — for a recurring occurrence whose rule has no
+  // home yet, the suggestion writes the RULE itself (once, for all days)
+  // instead of arranging today only. Per-day arranging stays for entries
+  // and for rules that already have a home.
+  const canSuggest = !!suggestedSettingId && !row.periodId && !!suggested;
+  const liveHere =
+    isOccurrenceVirtual && canSuggest && !!rule && !rule.periodSettingId;
+  const daySuggestion =
+    canSuggest && (!isOccurrenceVirtual || (!!rule && !!rule.periodSettingId));
+  useEffect(() => {
     if (row.occurrenceKey && isOccurrenceVirtual) {
       void db.recurrenceRules
         .where("itemId")
@@ -167,7 +179,24 @@ export function TodayEntryRow({
             </Chip>
           ) : null}
           {row.routine ? <Chip tone="neutral">{t("entry.routine")}</Chip> : null}
-          {suggestedSettingId && !row.periodId && suggested ? (
+          {liveHere ? (
+            <Chip
+              tone="sage"
+              title={t("entry.liveHereHint", {
+                name: periodName(suggested!.name),
+              })}
+              onClick={async () => {
+                if (!row.occurrence || !suggestedSettingId) return;
+                await run(setRulePeriod(row.occurrence.ruleId, suggestedSettingId), {
+                  success: t("entry.liveHereToast", {
+                    name: periodName(suggested!.name),
+                  }),
+                });
+              }}
+            >
+              {t("entry.liveHere", { name: periodName(suggested!.name) })}
+            </Chip>
+          ) : daySuggestion ? (
             <Chip
               tone="terracotta"
               title={t("entry.setPeriodHint")}
@@ -193,7 +222,7 @@ export function TodayEntryRow({
                 }
               }}
             >
-              {t("entry.looksLike", { name: periodName(suggested.name) })}
+              {t("entry.looksLike", { name: periodName(suggested!.name) })}
             </Chip>
           ) : null}
           {row.item && row.item.status === "archived" ? (
@@ -313,6 +342,26 @@ export function TodayEntryRow({
               <CalendarDays className="h-3.5 w-3.5" /> {t("entry.moveToAnotherDay")}
             </DropdownMenuItem>
             {isOccurrenceVirtual && row.occurrence ? (
+              /* v1.3 "مش النهارده" — the gentle way out (سفر/مرض/عزومة):
+                 today's occurrence simply isn't there; the rule keeps
+                 breathing and tomorrow arrives untouched. */
+              <DropdownMenuItem
+                onClick={async () => {
+                  if (!row.occurrence) return;
+                  await run(
+                    cancelOccurrence(
+                      row.occurrence.ruleId,
+                      row.occurrence.occurrenceKey,
+                      row.occurrence.originalDate
+                    ),
+                    { success: t("entry.notTodayToast") }
+                  );
+                }}
+              >
+                <Coffee className="h-3.5 w-3.5" /> {t("entry.notToday")}
+              </DropdownMenuItem>
+            ) : null}
+            {isOccurrenceVirtual && row.occurrence ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -333,46 +382,24 @@ export function TodayEntryRow({
                 >
                   <X className="h-3.5 w-3.5" /> {t("entry.stopAllRepeats")}
                 </DropdownMenuItem>
+              </>
+            ) : null}
+            {row.entry ? (
+              <>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={async () => {
-                    if (!row.occurrence) return;
-                    await run(
-                      cancelOccurrence(
-                        row.occurrence.ruleId,
-                        row.occurrence.occurrenceKey,
-                        row.occurrence.originalDate
-                      ),
-                      { success: t("entry.oneCancelledToast") }
-                    );
+                    await run(removeEntryFromDay(row.entry!.id), {
+                      success: t("entry.removedFromTodayToast"),
+                    });
                   }}
+                  className="text-[#a5533c] focus:text-[#a5533c]"
                 >
-                  <X className="h-3.5 w-3.5" /> {t("entry.cancelJustThisOne")}
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("entry.removeFromToday")}
                 </DropdownMenuItem>
               </>
             ) : null}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={async () => {
-                if (row.entry) {
-                  await run(removeEntryFromDay(row.entry.id), {
-                    success: t("entry.removedFromTodayToast"),
-                  });
-                } else if (row.occurrence) {
-                  await run(
-                    cancelOccurrence(
-                      row.occurrence.ruleId,
-                      row.occurrence.occurrenceKey,
-                      row.occurrence.originalDate
-                    ),
-                    { success: t("entry.offTodayToast") }
-                  );
-                }
-              }}
-              className="text-[#a5533c] focus:text-[#a5533c]"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {isOccurrenceVirtual ? t("entry.cancelThisOne") : t("entry.removeFromToday")}
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

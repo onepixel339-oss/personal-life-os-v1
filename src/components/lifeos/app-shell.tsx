@@ -38,6 +38,8 @@ import {
   ramadanPromptRecentlyShown,
 } from "@/lib/lifeos/services/ramadan-service";
 import { hasPin } from "@/lib/lifeos/services/pin-service";
+import { hasAnyClosure, closedInLast7Days } from "@/lib/lifeos/services/day-closure";
+import { shouldWeeklyNudge } from "@/lib/lifeos/services/backup-service";
 import { initInstallPromptListener, isStandalone } from "@/lib/lifeos/install-prompt";
 import { TodayScreen } from "./today/today-screen";
 import { WeeklyScreen } from "./weekly/weekly-screen";
@@ -59,6 +61,7 @@ import { InstallHintCard } from "./shared/install-hint";
 import { FridayAlarmCard } from "./shared/friday-alarm-card";
 import { TzHintCard } from "./shared/tz-hint";
 import { RamadanCard } from "./shared/ramadan-card";
+import { BackupNudgeCard } from "./shared/backup-nudge-card";
 import { cn } from "@/lib/utils";
 
 const PRIMARY = [
@@ -96,6 +99,8 @@ export function AppShell() {
   const [fridayAlarm, setFridayAlarm] = useState(false);
   const [tzHint, setTzHint] = useState(false);
   const [ramadanCard, setRamadanCard] = useState(false);
+  // v1.3: weekly backup nudge — one line, at most once a week
+  const [backupNudge, setBackupNudge] = useState(false);
   // optional PIN lock (v1.1): `null` = still checking the vault
   const [pinActive, setPinActive] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
@@ -120,16 +125,55 @@ export function AppShell() {
     void import("@/lib/lifeos/services/backup-service").then(
       ({ maybeAutoBackup }) => maybeAutoBackup()
     );
-    void getSetting<boolean>(SETTING_KEYS.installHintDismissed, false).then(
-      (v) => setInstallHint(!v && !isStandalone())
+    // v1.3 graduated onboarding: the install hint waits for the first قفلة —
+    // "add me to your home screen" makes sense once the daily ritual is real.
+    void Promise.all([
+      getSetting<boolean>(SETTING_KEYS.installHintDismissed, false),
+      hasAnyClosure(),
+    ]).then(([dismissed, anyClosure]) =>
+      setInstallHint(!dismissed && !isStandalone() && anyClosure)
     );
     // v1.2: local-only error log (never any network)
     initErrorLogging();
-    // v1.2: Friday-alarm card — shown once until done/dismissed
+    // v1.2: Friday-alarm card — shown once until done/dismissed.
+    // v1.3 graduation: only after a full week of life in here — a week
+    // since registration AND at least one closure. "كل حاجة في حينها".
     void Promise.all([
       getSetting<boolean>(SETTING_KEYS.fridayAlarmDismissed, false),
       getSetting<boolean>(SETTING_KEYS.fridayAlarmDone, false),
-    ]).then(([dismissed, done]) => setFridayAlarm(!dismissed && !done));
+      getSetting<string | null>(SETTING_KEYS.registeredAt, null),
+      hasAnyClosure(),
+    ]).then(([dismissed, done, registeredAt, anyClosure]) => {
+      const weekPassed =
+        !!registeredAt &&
+        Number.isFinite(Date.parse(registeredAt)) &&
+        Date.now() - Date.parse(registeredAt) >= 7 * 86_400_000;
+      setFridayAlarm(!dismissed && !done && weekPassed && anyClosure);
+    });
+    // v1.3: the weekly backup nudge — the one honest alarm. Not a streak,
+    // not a scolding: a single line, at most once a week, only after a
+    // lived week (≥1 قفلة) with a stale export. The phone is the only copy.
+    void (async () => {
+      try {
+        const [lastExport, lastNudge, closed, itemCount] = await Promise.all([
+          getSetting<number | null>(SETTING_KEYS.lastBackupAt, null),
+          getSetting<number | null>(SETTING_KEYS.backupWeeklyNudgeAt, null),
+          closedInLast7Days(),
+          db.items.count(),
+        ]);
+        setBackupNudge(
+          shouldWeeklyNudge({
+            now: Date.now(),
+            lastExportAt: lastExport ?? null,
+            lastNudgeAt: lastNudge ?? null,
+            closedInLast7Days: closed,
+            itemCount,
+          })
+        );
+      } catch {
+        /* quiet — a courtesy must never become an error */
+      }
+    })();
     // v1.2: a manual prayer schedule drifts an hour when DST flips — say it once
     void (async () => {
       try {
@@ -396,6 +440,7 @@ export function AppShell() {
               {tzHint ? <TzHintCard onDone={() => setTzHint(false)} /> : null}
               {fridayAlarm ? <FridayAlarmCard onDone={() => setFridayAlarm(false)} /> : null}
               {ramadanCard ? <RamadanCard onDone={() => setRamadanCard(false)} /> : null}
+              {backupNudge ? <BackupNudgeCard onDone={() => setBackupNudge(false)} /> : null}
             </div>
           ) : null}
         </main>

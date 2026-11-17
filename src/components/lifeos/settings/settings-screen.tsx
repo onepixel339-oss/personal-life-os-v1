@@ -34,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  useLifeToday,
   usePeriodSettings,
   useRegisteredAt,
   useUserName,
@@ -62,6 +63,7 @@ import {
 import {
   CALC_METHOD_LABELS,
   DEFAULT_MANUAL_TIMES,
+  EGYPT_CITIES,
   PRAYER_KEYS,
   type CalcMethod,
   type PrayerSettings,
@@ -440,6 +442,7 @@ function CalendarSection() {
 function PeriodsSection() {
   const settings = usePeriodSettings();
   const { t } = useT();
+  const lifeToday = useLifeToday();
   const [editing, setEditing] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   if (settings === undefined) return null;
@@ -452,6 +455,15 @@ function PeriodsSection() {
       );
     });
     emitChange(["periodSettings"]);
+    // v1.3: today follows the new setup immediately — hiding a period
+    // takes effect on the day you're living, not from tomorrow. Past days
+    // keep their snapshots (D15 — history is never rewritten quietly).
+    try {
+      const plan = await db.dailyPlans.where("date").equals(lifeToday).first();
+      if (plan) await reSnapshotPeriods(lifeToday);
+    } catch {
+      /* quiet */
+    }
   };
 
   const update = (id: string, patch: Partial<PeriodSetting>) => {
@@ -812,7 +824,7 @@ function PeriodPreview() {
 
 function PrayerSection() {
   const prefs = useViewPrefs();
-  const { t } = useT();
+  const { t, lang } = useT();
   const [draft, setDraft] = useState<PrayerSettings | null>(null);
   const [lastSaved, setLastSaved] = useState<PrayerSettings | null>(null);
   const [locating, setLocating] = useState(false);
@@ -834,6 +846,7 @@ function PrayerSection() {
                   ...d.calculated,
                   latitude: Number(pos.coords.latitude.toFixed(4)),
                   longitude: Number(pos.coords.longitude.toFixed(4)),
+                  city: undefined,
                 },
               }
             : d
@@ -926,6 +939,7 @@ function PrayerSection() {
                     calculated: {
                       ...draft.calculated,
                       latitude: Number(e.target.value.replace(/[^0-9.\-]/g, "")) || 0,
+                      city: undefined,
                     },
                   })
                 }
@@ -943,6 +957,7 @@ function PrayerSection() {
                     calculated: {
                       ...draft.calculated,
                       longitude: Number(e.target.value.replace(/[^0-9.\-]/g, "")) || 0,
+                      city: undefined,
                     },
                   })
                 }
@@ -966,6 +981,39 @@ function PrayerSection() {
               {t("prayer.geoPrivacyNote")}
             </span>
           </div>
+          {/* v1.3: ready-made Egyptian cities beside the location button —
+              for those with location blocked. Coordinates live in the
+              bundle; choosing a city never touches the network. */}
+          <label className="grid gap-1">
+            <span className="text-[11.5px] font-medium text-ink-soft">{t("prayer.city")}</span>
+            <Select
+              value={draft.calculated.city ?? ""}
+              onValueChange={(v) => {
+                const c = EGYPT_CITIES.find((x) => x.id === v);
+                if (!c) return;
+                setDraft({
+                  ...draft,
+                  calculated: {
+                    ...draft.calculated,
+                    city: c.id,
+                    latitude: c.lat,
+                    longitude: c.lng,
+                  },
+                });
+              }}
+            >
+              <SelectTrigger className="w-full rounded-xl border-border bg-surface">
+                <SelectValue placeholder={t("prayer.cityCustom")} />
+              </SelectTrigger>
+              <SelectContent className="max-h-72 rounded-xl border-border bg-surface-raised">
+                {EGYPT_CITIES.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {lang === "ar" ? c.nameAr : c.nameEn}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
           <label className="grid gap-1">
             <span className="text-[11.5px] font-medium text-ink-soft">{t("prayer.method")}</span>
             <Select

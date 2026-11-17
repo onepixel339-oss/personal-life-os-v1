@@ -91,7 +91,15 @@ export function generateDates(
     for (;; weekIndex += interval) {
       const week = addDays(startWeek, weekIndex * 7);
       if (compareDates(week, windowEnd) > 0) break;
-      const target = addDays(week, dayOfWeek(rule.startDate));
+      // v1.3 fix: dayOfWeek() is an ABSOLUTE weekday (0=Sunday..6=Saturday)
+      // while the week grid starts at `anchor` (6=Saturday by default in
+      // Egypt). The offset inside the week must be anchor-relative —
+      // before this fix every weekly rule with anchor≠0 fired one day
+      // EARLIER than the start weekday the user picked.
+      const target = addDays(
+        week,
+        (dayOfWeek(rule.startDate) - anchor + 7) % 7
+      );
       if (compareDates(target, rule.startDate) < 0) continue;
       if (compareDates(target, windowStart) >= 0 && compareDates(target, windowEnd) <= 0)
         out.push(target);
@@ -109,7 +117,11 @@ export function generateDates(
       const week = addDays(startWeek, weekIndex * 7);
       if (compareDates(week, windowEnd) > 0) break;
       for (const dow of days) {
-        const target = addDays(week, dow);
+        // v1.3 fix: byWeekday holds ABSOLUTE weekday numbers (the labels the
+        // user taps: 0=الأحد..6=السبت), so the in-week offset must be
+        // anchor-relative. Before this fix, "الثلاثاء والخميس" with the
+        // default Saturday anchor fired الإتنين والأربعاء instead.
+        const target = addDays(week, (dow - anchor + 7) % 7);
         if (compareDates(target, rule.startDate) < 0) continue;
         if (compareDates(target, windowStart) >= 0 && compareDates(target, windowEnd) <= 0)
           out.push(target);

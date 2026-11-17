@@ -127,6 +127,32 @@ export async function downloadBackup(
   return ok({ filename: res.value.filename });
 }
 
+/* ---------- v1.3: the weekly backup nudge, decided by data ---------- */
+
+const WEEK_MS = 7 * 86_400_000;
+
+export interface WeeklyNudgeInput {
+  now: number;
+  /** epoch ms of the last export (backup.lastExportAt), null = never exported */
+  lastExportAt: number | null;
+  /** epoch ms of the last nudge (backup.weeklyNudge.at), null = never nudged */
+  lastNudgeAt: number | null;
+  /** at least one قفلة in the last 7 days — a lived week, not a calendar one */
+  closedInLast7Days: boolean;
+  /** anything worth protecting? */
+  itemCount: number;
+}
+
+/** One line, at most once a week, never a scolding. Speaks only when the
+ *  user actually lived a week in here (≥1 closure), the last export is stale
+ *  (>7 days or never), and we haven't already spoken this week. */
+export function shouldWeeklyNudge(i: WeeklyNudgeInput): boolean {
+  if (i.itemCount <= 0 || !i.closedInLast7Days) return false;
+  if (i.lastExportAt !== null && i.now - i.lastExportAt < WEEK_MS) return false;
+  if (i.lastNudgeAt !== null && i.now - i.lastNudgeAt < WEEK_MS) return false;
+  return true;
+}
+
 /* ---------- validation ---------- */
 
 const REQUIRED_BY_STORE: Record<string, string[]> = {

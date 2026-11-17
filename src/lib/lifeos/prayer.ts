@@ -64,6 +64,7 @@ export interface PrayerSettings {
     method: CalcMethod;
     madhab: "shafi" | "hanafi";
     corrections: Record<PrayerKey, number>; // minutes
+    city?: string; // preset id from EGYPT_CITIES — display convenience only
   };
 }
 
@@ -75,6 +76,38 @@ export const DEFAULT_MANUAL_TIMES: Record<PrayerKey, string> = {
   maghrib: "17:30",
   isha: "18:45",
 };
+
+/* Egyptian cities, pre-baked (v1.3) — for when the browser location is off.
+   The coordinates live inside the bundle: picking a city never touches the
+   network, it only fills the two number fields the user could have typed. */
+export interface EgyptCity {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  lat: number;
+  lng: number;
+}
+
+export const EGYPT_CITIES: EgyptCity[] = [
+  { id: "cairo", nameAr: "القاهرة", nameEn: "Cairo", lat: 30.0444, lng: 31.2357 },
+  { id: "giza", nameAr: "الجيزة", nameEn: "Giza", lat: 30.0131, lng: 31.2089 },
+  { id: "alexandria", nameAr: "الإسكندرية", nameEn: "Alexandria", lat: 31.2001, lng: 29.9187 },
+  { id: "portsaid", nameAr: "بورسعيد", nameEn: "Port Said", lat: 31.2653, lng: 32.3019 },
+  { id: "suez", nameAr: "السويس", nameEn: "Suez", lat: 29.9668, lng: 32.5498 },
+  { id: "ismailia", nameAr: "الإسماعيلية", nameEn: "Ismailia", lat: 30.5852, lng: 32.2654 },
+  { id: "mansoura", nameAr: "المنصورة", nameEn: "Mansoura", lat: 31.0409, lng: 31.3785 },
+  { id: "tanta", nameAr: "طنطا", nameEn: "Tanta", lat: 30.7865, lng: 30.9982 },
+  { id: "zagazig", nameAr: "الزقازيق", nameEn: "Zagazig", lat: 30.5877, lng: 31.502 },
+  { id: "damietta", nameAr: "دمياط", nameEn: "Damietta", lat: 31.4176, lng: 31.6743 },
+  { id: "fayoum", nameAr: "الفيوم", nameEn: "Fayoum", lat: 29.3084, lng: 30.8428 },
+  { id: "asyut", nameAr: "أسيوط", nameEn: "Asyut", lat: 27.1783, lng: 31.1859 },
+  { id: "sohag", nameAr: "سوهاج", nameEn: "Sohag", lat: 26.5591, lng: 31.6957 },
+  { id: "qena", nameAr: "قنا", nameEn: "Qena", lat: 26.1551, lng: 32.716 },
+  { id: "luxor", nameAr: "الأقصر", nameEn: "Luxor", lat: 25.6872, lng: 32.6392 },
+  { id: "aswan", nameAr: "أسوان", nameEn: "Aswan", lat: 24.0889, lng: 32.8998 },
+  { id: "hurghada", nameAr: "الغردقة", nameEn: "Hurghada", lat: 27.2579, lng: 33.8116 },
+  { id: "marsamatrouh", nameAr: "مرسى مطروح", nameEn: "Marsa Matrouh", lat: 31.3543, lng: 27.2373 },
+];
 
 export const DEFAULT_PRAYER_SETTINGS: PrayerSettings = {
   mode: "calculated",
