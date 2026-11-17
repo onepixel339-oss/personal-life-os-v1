@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { run } from "@/lib/lifeos/run";
+import { run, toastWithUndo } from "@/lib/lifeos/run";
 import type { TodayRow } from "@/lib/lifeos/hooks";
 import type { ResolvedPeriod } from "@/lib/lifeos/types";
 import type { RecurrenceRule } from "@/lib/lifeos/types";
@@ -51,11 +51,13 @@ import {
 } from "@/lib/lifeos/services/planning-service";
 import {
   cancelOccurrence,
+  parseOccurrenceKey,
   setRulePeriod,
   setOccurrenceExecution,
   disableRule,
   endRuleBefore,
 } from "@/lib/lifeos/services/recurrence-service";
+import { pushUndo, type UndoCommand } from "@/lib/lifeos/services/history-service";
 import { db } from "@/lib/lifeos/db";
 import { formatDate, formatTime, isValidDateString } from "@/lib/lifeos/dates";
 import { periodName, t, useT } from "@/lib/lifeos/i18n";
@@ -83,6 +85,12 @@ export function TodayEntryRow({
   const [moveDayOpen, setMoveDayOpen] = useState(false);
   const [rule, setRule] = useState<RecurrenceRule | null>(null);
   const isOccurrenceVirtual = row.kind === "occurrence";
+  // v1.3.1 — a materialized recurring entry (legacy rows from before rules
+  // carried their own anchor) is ALSO a recurring row: same gentle menu
+  // (مش النهارده + stop), and the red delete stays a manual-entries-only
+  // path — removing a materialized twin without cancelling its occurrence
+  // just made the virtual twin bounce back the same day.
+  const materializedRecurring = !isOccurrenceVirtual && !!row.entry?.occurrenceKey;
   const periodOfRow = periods.find((p) => p.id === row.periodId);
   const suggested = periods.find((p) => p.settingId === suggestedSettingId);
   const done = row.executionStatus === "completed";
@@ -97,14 +105,14 @@ export function TodayEntryRow({
   const daySuggestion =
     canSuggest && (!isOccurrenceVirtual || (!!rule && !!rule.periodSettingId));
   useEffect(() => {
-    if (row.occurrenceKey && isOccurrenceVirtual) {
+    if (row.occurrenceKey && (isOccurrenceVirtual || materializedRecurring)) {
       void db.recurrenceRules
         .where("itemId")
         .equals(row.item?.id ?? "___")
         .first()
         .then((r) => setRule(r ?? null));
     }
-  }, [row.occurrenceKey, row.item?.id, isOccurrenceVirtual]);
+  }, [row.occurrenceKey, row.item?.id, isOccurrenceVirtual, materializedRecurring]);
 
   const cycleStatus = async () => {
     const order = ["pending", "completed", "skipped", "partial"] as const;
@@ -341,33 +349,67 @@ export function TodayEntryRow({
             <DropdownMenuItem onClick={() => setMoveDayOpen(true)}>
               <CalendarDays className="h-3.5 w-3.5" /> {t("entry.moveToAnotherDay")}
             </DropdownMenuItem>
-            {isOccurrenceVirtual && row.occurrence ? (
+            {(isOccurrenceVirtual && row.occurrence) || materializedRecurring ? (
               /* v1.3 "مش النهارده" — the gentle way out (سفر/مرض/عزومة):
                  today's occurrence simply isn't there; the rule keeps
-                 breathing and tomorrow arrives untouched. */
+                 breathing and tomorrow arrives untouched. v1.3.1: it covers
+                 materialized recurring rows too (cancel + lift today's twin
+                 in one gesture), and it is never a dead end — the toast
+                 carries a quiet undo. */
               <DropdownMenuItem
                 onClick={async () => {
-                  if (!row.occurrence) return;
-                  await run(
-                    cancelOccurrence(
-                      row.occurrence.ruleId,
-                      row.occurrence.occurrenceKey,
-                      row.occurrence.originalDate
-                    ),
-                    { success: t("entry.notTodayToast") }
+                  if (isOccurrenceVirtual && row.occurrence) {
+                    await run(
+                      cancelOccurrence(
+                        row.occurrence.ruleId,
+                        row.occurrence.occurrenceKey,
+                        row.occurrence.originalDate
+                      )
+                    );
+                    return;
+                  }
+                  const key = row.entry?.occurrenceKey;
+                  if (!row.entry || !key) return;
+                  const parsed = parseOccurrenceKey(key);
+                  if (!parsed) return;
+                  const ruleId = rule?.id ?? parsed.ruleRootId;
+                  const cancelRes = await run(
+                    cancelOccurrence(ruleId, key, parsed.originalDate),
+                    { quiet: true }
                   );
+                  const removeRes = await run(
+                    removeEntryFromDay(row.entry.id),
+                    { quiet: true }
+                  );
+                  const cancelUndo = cancelRes.ok ? cancelRes.value.undo : undefined;
+                  const removeUndo = removeRes.ok ? removeRes.value.undo : undefined;
+                  if (cancelUndo && removeUndo) {
+                    const combined: UndoCommand = {
+                      label: t("entry.notTodayToast"),
+                      undo: async () => {
+                        await removeUndo.undo();
+                        await cancelUndo.undo();
+                      },
+                    };
+                    pushUndo(combined);
+                    toastWithUndo(combined);
+                  }
                 }}
               >
                 <Coffee className="h-3.5 w-3.5" /> {t("entry.notToday")}
               </DropdownMenuItem>
             ) : null}
-            {isOccurrenceVirtual && row.occurrence ? (
+            {(isOccurrenceVirtual && row.occurrence) || (materializedRecurring && rule) ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={async () => {
                     if (!rule) return;
-                    await run(endRuleBefore(rule.id, row.occurrence!.originalDate), {
+                    const originalDate =
+                      row.occurrence?.originalDate ??
+                      parseOccurrenceKey(row.entry?.occurrenceKey ?? "")?.originalDate;
+                    if (!originalDate) return;
+                    await run(endRuleBefore(rule.id, originalDate), {
                       success: t("entry.repeatsEndToast"),
                     });
                   }}
@@ -384,7 +426,7 @@ export function TodayEntryRow({
                 </DropdownMenuItem>
               </>
             ) : null}
-            {row.entry ? (
+            {row.entry && !row.entry.occurrenceKey ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

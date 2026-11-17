@@ -1955,6 +1955,8 @@ const RT_EXACT: Record<string, string> = {
   "Back on the day": "عاد إلى اليوم",
   "Removed from the week": "أُزيل من الأسبوع",
   "Back in the week": "عاد إلى الأسبوع",
+  /* v1.3.1 — مش النهارده undo */
+  "Okay — not today. It's back tomorrow.": "تمام — مش النهارده. بكره موجود برضه.",
   /* resume suggestions */
   "A note you wanted to come back to.": "ملاحظة أردت العودة إليها.",
   "You kept this for later attention.": "احتفظت بهذا لعناية لاحقة.",

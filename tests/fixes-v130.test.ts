@@ -3,7 +3,9 @@
    2. hasAnyClosure / closedInLast7Days: the graduated-cards + nudge gates.
    3. EGYPT_CITIES: valid, unique, in Egypt, Cairo = the default.
    4. i18n: the new keys exist in BOTH dictionaries; the dead cancel-key
-      trio is gone from both; Arabic-Indic digits where numbers appear. */
+      trio is gone from both; Arabic-Indic digits where numbers appear.
+   5. (v1.3.1) مش النهارده: cancel carries an honest undo, and materialized
+      recurring rows get the same gentle path — no bounce-backs. */
 
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { db } from "../src/lib/lifeos/db";
@@ -14,6 +16,17 @@ import {
   hasAnyClosure,
 } from "../src/lib/lifeos/services/day-closure";
 import { generateDates } from "../src/lib/lifeos/services/recurrence-service";
+import {
+  buildRulesById,
+  buildStatesByKey,
+  cancelOccurrence,
+  createRule,
+  expand,
+  parseOccurrenceKey,
+  restoreOccurrence,
+  setOccurrenceExecution,
+} from "../src/lib/lifeos/services/recurrence-service";
+import { buildTodayData } from "../src/lib/lifeos/services/today-assembly";
 import {
   DEFAULT_PRAYER_SETTINGS,
   EGYPT_CITIES,
@@ -278,5 +291,135 @@ describe("i18n — new keys in both dictionaries, dead keys gone, digits honest"
   test("خلّيه يعيش هنا؟ is exactly the phrase the product speaks", () => {
     expect(ar["entry.liveHere"]).toContain("خلّيه يعيش هنا؟");
     expect(ar["entry.notToday"]).toBe("مش النهارده");
+  });
+});
+
+/* ---------------- 6: مش النهارده — never a dead end (v1.3.1) ---------------- */
+
+describe("مش النهارده — cancel carries an undo; materialized twins don't bounce", () => {
+  async function seedDailyRule(date: string) {
+    const itemId = "it-" + Math.random().toString(36).slice(2, 8);
+    await db.items.add({
+      id: itemId,
+      type: "task",
+      title: "مشي",
+      status: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    } as never);
+    const res = await createRule({
+      itemId,
+      pattern: "daily",
+      interval: 1,
+      startDate: date,
+      weekAnchor: 6,
+    });
+    if (!res.ok) throw new Error("seed failed");
+    return { itemId, rule: res.value };
+  }
+
+  async function expandOn(ruleId: string, date: string) {
+    const rule = await db.recurrenceRules.get(ruleId);
+    if (!rule) return [];
+    const states = await db.occurrenceStates.toArray();
+    return expand(rule, date, date, buildStatesByKey(states), buildRulesById([rule]));
+  }
+
+  test("parseOccurrenceKey splits root and date, and rejects junk", () => {
+    expect(parseOccurrenceKey("rule-1:2026-11-18")).toEqual({
+      ruleRootId: "rule-1",
+      originalDate: "2026-11-18",
+    });
+    expect(parseOccurrenceKey("nope")).toBeNull();
+    expect(parseOccurrenceKey("x:2026-13-99")).toBeNull();
+  });
+
+  test("cancel hides today; the undo returns it EXACTLY as it was", async () => {
+    const today = todayLocal();
+    const { rule } = await seedDailyRule(today);
+    const [before] = await expandOn(rule.id, today);
+    expect(before).toBeDefined();
+    // a real completion first — the undo must honor it, not swallow it
+    await setOccurrenceExecution(rule.id, before.occurrenceKey, today, "completed");
+    const cancelRes = await cancelOccurrence(rule.id, before.occurrenceKey, today);
+    if (!cancelRes.ok) throw new Error("cancel should have succeeded");
+    expect((await expandOn(rule.id, today)).length).toBe(0);
+    await cancelRes.value.undo!.undo();
+    const [after] = await expandOn(rule.id, today);
+    expect(after.executionStatus).toBe("completed");
+  });
+
+  test("restoreOccurrence brings a cancelled day back", async () => {
+    const today = todayLocal();
+    const { rule } = await seedDailyRule(today);
+    const [occ] = await expandOn(rule.id, today);
+    await cancelOccurrence(rule.id, occ.occurrenceKey, today);
+    expect((await expandOn(rule.id, today)).length).toBe(0);
+    const res = await restoreOccurrence(rule.id, occ.occurrenceKey, today);
+    expect(res.ok).toBe(true);
+    expect((await expandOn(rule.id, today)).length).toBe(1);
+  });
+
+  test("the materialized twin: remove-only bounces back; cancel+remove doesn't; undo restores", async () => {
+    const today = todayLocal();
+    const { itemId, rule } = await seedDailyRule(today);
+    const [occ] = await expandOn(rule.id, today);
+    const planId = "plan-" + today;
+    await db.dailyPlans.add({
+      id: planId,
+      date: today,
+      createdAt: Date.now(),
+    } as never);
+    const seedEntry = (id: string) =>
+      db.dailyEntries.add({
+        id,
+        dailyPlanId: planId,
+        itemId,
+        executionStatus: "pending",
+        sortOrder: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        occurrenceKey: occ.occurrenceKey,
+      } as never);
+
+    const assemble = async () => {
+      const rules = await db.recurrenceRules.toArray();
+      const entries = await db.dailyEntries.toArray();
+      const items = await db.items.toArray();
+      const states = await db.occurrenceStates.toArray();
+      return buildTodayData({
+        date: today,
+        plan: undefined,
+        periodRows: [],
+        entries: entries as never,
+        items: items as never,
+        routines: [],
+        rules,
+        occStates: states,
+      });
+    };
+
+    // 1) the old dead end, documented: deleting only the materialized row
+    //    made the virtual twin bounce straight back the same day
+    await seedEntry("ent-1");
+    await db.dailyEntries.delete("ent-1");
+    const bounced = await assemble();
+    expect(bounced.allRows.some((r) => r.key.startsWith("occ:"))).toBe(true);
+
+    // 2) the v1.3.1 gesture: cancel the occurrence AND lift today's row
+    await seedEntry("ent-2");
+    const cancelRes = await cancelOccurrence(rule.id, occ.occurrenceKey, today);
+    if (!cancelRes.ok) throw new Error("cancel should have succeeded");
+    await db.dailyEntries.delete("ent-2");
+    const quiet = await assemble();
+    expect(quiet.allRows.length).toBe(0);
+
+    // 3) the composed undo: the day gets its row back, exactly where it was
+    await cancelRes.value.undo!.undo();
+    await seedEntry("ent-3");
+    const restored = await assemble();
+    expect(restored.allRows.length).toBe(1);
+    expect(restored.allRows[0].kind).toBe("entry");
+    expect(restored.allRows[0].occurrenceKey).toBe(occ.occurrenceKey);
   });
 });

@@ -23,6 +23,7 @@ import type {
   Result,
 } from "../types";
 import { err, ok } from "../types";
+import type { Undoable } from "./history-service";
 
 /* ---------- pure date generation (memoized per rule+version+window) ---------- */
 
@@ -594,27 +595,82 @@ export async function modifyOccurrence(
   }));
 }
 
+/* "مش النهارده" (v1.3) — today's occurrence simply isn't there; the rule
+   keeps breathing and tomorrow arrives untouched. v1.3.1: never a dead
+   end — the result carries an undo that puts the day back EXACTLY as it
+   was (an occurrence completed before cancelling returns completed). */
 export async function cancelOccurrence(
+  ruleId: string,
+  occurrenceKey: string,
+  originalDate: string
+): Promise<Result<Undoable>> {
+  try {
+    const existing = await db.occurrenceStates
+      .where("[ruleId+occurrenceKey]")
+      .equals([ruleId, occurrenceKey])
+      .first();
+    const now = Date.now();
+    const newId = uid();
+    const restore = async () => {
+      if (existing) {
+        await db.occurrenceStates.put({ ...existing });
+      } else {
+        await db.occurrenceStates.delete(newId);
+      }
+      emitChange(["occurrenceStates"]);
+    };
+    if (existing) {
+      await db.occurrenceStates.update(existing.id, {
+        kind: "cancelled",
+        updatedAt: now,
+      });
+    } else {
+      await db.occurrenceStates.add({
+        id: newId,
+        ruleId,
+        occurrenceKey,
+        originalDate,
+        kind: "cancelled",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    emitChange(["occurrenceStates"]);
+    return ok({
+      undo: {
+        label: "Okay — not today. It's back tomorrow.",
+        undo: restore,
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return err({ code: "write_failed", message: "Couldn't save that." });
+  }
+}
+
+/** Bring a cancelled occurrence back (its day shows it again). */
+export async function restoreOccurrence(
   ruleId: string,
   occurrenceKey: string,
   originalDate: string
 ): Promise<Result<void>> {
   return upsertOccurrenceState(ruleId, occurrenceKey, originalDate, (s) => ({
     ...s,
-    kind: "cancelled",
+    kind: "modified",
     updatedAt: Date.now(),
   }));
 }
 
-export async function restoreOccurrence(
-  ruleId: string,
-  occurrenceKey: string
-): Promise<Result<void>> {
-  return upsertOccurrenceState(ruleId, occurrenceKey, "", (s) => ({
-    ...s,
-    kind: "modified",
-    updatedAt: Date.now(),
-  }));
+/** Split "ruleRootId:originalDate" into its parts — UI helper for legacy
+ *  materialized rows, which carry the occurrence key on the dailyEntry. */
+export function parseOccurrenceKey(
+  key: string
+): { ruleRootId: string; originalDate: string } | null {
+  const i = key.indexOf(":");
+  if (i <= 0) return null;
+  const originalDate = key.slice(i + 1);
+  if (!isValidDateString(originalDate)) return null;
+  return { ruleRootId: key.slice(0, i), originalDate };
 }
 
 /* ---------- "this and future" split (§8.4) ---------- */
