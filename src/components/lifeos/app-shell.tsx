@@ -28,6 +28,8 @@ import { run } from "@/lib/lifeos/run";
 import { capture } from "@/lib/lifeos/services/inbox-service";
 import { SETTING_KEYS } from "@/lib/lifeos/defaults";
 import { db, getSetting } from "@/lib/lifeos/db";
+import { hasPin } from "@/lib/lifeos/services/pin-service";
+import { initInstallPromptListener, isStandalone } from "@/lib/lifeos/install-prompt";
 import { TodayScreen } from "./today/today-screen";
 import { WeeklyScreen } from "./weekly/weekly-screen";
 import { SpacesScreen, SpaceScreen } from "./spaces/spaces-screen";
@@ -43,6 +45,8 @@ import { SearchDialog } from "./search/search-dialog";
 import { QuickAddSheet } from "./quickadd/quick-add-sheet";
 import { ItemSheet } from "./itemsheet/item-sheet";
 import { RegistrationGate } from "./shared/registration-gate";
+import { LockScreen } from "./shared/lock-screen";
+import { InstallHintCard } from "./shared/install-hint";
 import { cn } from "@/lib/utils";
 
 const PRIMARY = [
@@ -75,11 +79,16 @@ export function AppShell() {
   const [online, setOnline] = useState(true);
   const [welcome, setWelcome] = useState<boolean | null>(null);
   const [makeItYoursOpen, setMakeItYoursOpen] = useState(false);
+  const [installHint, setInstallHint] = useState(false);
+  // optional PIN lock (v1.1): `null` = still checking the vault
+  const [pinActive, setPinActive] = useState<boolean | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
 
   // one-time initialization
   useEffect(() => {
     void initI18n();
     ensureSearchStarted();
+    initInstallPromptListener();
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
@@ -90,11 +99,35 @@ export function AppShell() {
     void getSetting<boolean>(SETTING_KEYS.welcomeDismissed, false).then((v) =>
       setWelcome(!v)
     );
+    void hasPin().then(setPinActive);
+    // quiet weekly on-device snapshot (never blocks the UI, never throws)
+    void import("@/lib/lifeos/services/backup-service").then(
+      ({ maybeAutoBackup }) => maybeAutoBackup()
+    );
+    void getSetting<boolean>(SETTING_KEYS.installHintDismissed, false).then(
+      (v) => setInstallHint(!v && !isStandalone())
+    );
     return () => {
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
     };
   }, []);
+
+  // re-lock when the app stays in the background for a while (v1.1)
+  useEffect(() => {
+    if (pinActive !== true) return;
+    let hiddenAt: number | null = null;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (hiddenAt !== null && Date.now() - hiddenAt > 90_000) {
+        setUnlocked(false);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibility);
+  }, [pinActive]);
 
   // ask for persistent storage quietly after the first meaningful write
   const persistedAsked = useRef(false);
@@ -178,7 +211,10 @@ export function AppShell() {
   }, [route]);
 
   // Registration gate: `undefined` = still reading local data, `null` = not registered.
-  if (userName === undefined) return <BootSplash />;
+  // PIN lock (v1.1) sits in front of everything once enabled.
+  if (pinActive === null || userName === undefined) return <BootSplash />;
+  if (pinActive && !unlocked)
+    return <LockScreen onUnlocked={() => setUnlocked(true)} />;
   if (userName === null) return <RegistrationGate />;
 
   return (
@@ -267,6 +303,7 @@ export function AppShell() {
         <main className="min-w-0 flex-1 px-4 pb-28 pt-5 md:px-7 lg:pb-14 lg:pt-7">
           <div className="mx-auto max-w-[720px]">{screen}</div>
           {welcome ? <WelcomeCard onClose={() => setWelcome(false)} onOpenSetup={() => setMakeItYoursOpen(true)} /> : null}
+          {installHint ? <InstallHintCard onDone={() => setInstallHint(false)} /> : null}
         </main>
 
         {/* right context panel */}

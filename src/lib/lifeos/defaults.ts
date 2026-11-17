@@ -15,6 +15,7 @@ export const SETTING_KEYS = {
   registeredAt: "user.registeredAt",
   welcomeDismissed: "onboarding.welcome.dismissed",
   makeItYoursDone: "onboarding.makeItYours.dismissed",
+  installHintDismissed: "onboarding.installHint.dismissed",
   inboxBadge: "ui.inbox.badge",
   lastBackupAt: "backup.lastExportAt",
   restoreSnapshot: "restore.snapshot",

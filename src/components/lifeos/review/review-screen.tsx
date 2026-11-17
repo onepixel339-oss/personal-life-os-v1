@@ -7,17 +7,30 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useReviewData, useViewPrefs, useWeeklyData } from "@/lib/lifeos/hooks";
-import { addDays, formatWeekRange, weekStart } from "@/lib/lifeos/dates";
+import {
+  usePeriodSettings,
+  useReviewData,
+  useViewPrefs,
+  useWeekStripData,
+  useWeeklyData,
+} from "@/lib/lifeos/hooks";
+import { addDays, formatWeekRange, weekdayName, weekStart } from "@/lib/lifeos/dates";
 import { todayLocal } from "@/lib/lifeos/dates";
 import { run } from "@/lib/lifeos/run";
 import { saveReview } from "@/lib/lifeos/services/review-service";
 import { addEntryToWeek } from "@/lib/lifeos/services/planning-service";
-import { t, useT } from "@/lib/lifeos/i18n";
-import type { WeeklyReviewAnswers } from "@/lib/lifeos/types";
+import {
+  buildWeekStrip,
+  densityLevel,
+  type WeekStrip,
+} from "@/lib/lifeos/services/week-strip";
+import { periodName, t, useT } from "@/lib/lifeos/i18n";
+import { toArabicDigits } from "@/lib/lifeos/lang-state";
+import type { PeriodSetting, WeeklyReviewAnswers } from "@/lib/lifeos/types";
 import { Card, Chip, EmptyState, PageHeader, SectionLabel } from "../shared/primitives";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
+import { cn } from "@/lib/utils";
 
 export function ReviewScreen() {
   const reviewWeekStart = useUIStore((s) => s.reviewWeekStart);
@@ -91,6 +104,20 @@ export function ReviewScreen() {
       .slice(0, 6);
   }, [reviewWeekStart]);
 
+  const periodSettings = usePeriodSettings();
+  const stripEntries = useWeekStripData(weekly?.days ?? []);
+
+  const strip: WeekStrip | null = useMemo(() => {
+    if (!weekly || weekly.days.length === 0 || stripEntries === undefined) {
+      return null;
+    }
+    const knownOrders = (periodSettings ?? [])
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((ps) => ps.order);
+    return buildWeekStrip(weekly.days, stripEntries, knownOrders);
+  }, [weekly, stripEntries, periodSettings]);
+
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -137,6 +164,8 @@ export function ReviewScreen() {
       <p className="-mt-2 mb-5 text-[13px] tabular-nums text-muted-foreground">
         {formatWeekRange(reviewWeekStart, addDays(reviewWeekStart, 6))}
       </p>
+
+      {strip ? <WeekStripCard strip={strip} periodSettings={periodSettings} /> : null}
 
       <div className="space-y-4">
         {questions.map((q, i) => (
@@ -236,5 +265,128 @@ export function ReviewScreen() {
         />
       </div>
     </div>
+  );
+}
+
+/* ---------- qualitative week strip (v1.1) — shapes, never numbers ---------- */
+
+function WeekStripCard({
+  strip,
+  periodSettings,
+}: {
+  strip: WeekStrip;
+  periodSettings: PeriodSetting[] | undefined;
+}) {
+  const { t, lang } = useT();
+
+  const labelByOrder = new Map<number, string>();
+  for (const ps of periodSettings ?? []) {
+    labelByOrder.set(ps.order, periodName(ps.name));
+  }
+  const rowLabel = (order: number) =>
+    order === 0
+      ? t("strip.unplacedRow")
+      : (labelByOrder.get(order) ?? t("strip.periodRow"));
+  const fmtNum = (n: number) =>
+    lang === "ar" ? toArabicDigits(String(n)) : String(n);
+
+  const weekTotal = [...strip.dayTotals.values()].reduce((a, b) => a + b, 0);
+  const gridCols = { gridTemplateColumns: "84px repeat(7, minmax(0, 1fr))" };
+
+  return (
+    <Card className="mb-4 px-4 py-3.5 md:px-5">
+      <SectionLabel>{t("strip.title")}</SectionLabel>
+      <p className="mt-1 text-[12.5px] italic text-muted-foreground">
+        {t("strip.desc")}
+      </p>
+
+      <div className="mt-3 overflow-x-auto">
+        <div className="min-w-[400px]">
+          <div className="grid items-center gap-1" style={gridCols}>
+            <span />
+            {strip.days.map((d) => {
+              const total = strip.dayTotals.get(d) ?? 0;
+              const open = strip.dayOpen.get(d) ?? 0;
+              return (
+                <span
+                  key={d}
+                  className={cn(
+                    "text-center text-[10.5px] leading-tight",
+                    total === 0
+                      ? "text-muted-foreground/60"
+                      : open === 0
+                        ? "font-medium text-sage"
+                        : "text-ink-soft"
+                  )}
+                >
+                  {weekdayName(d, true)}
+                </span>
+              );
+            })}
+          </div>
+          {strip.orders.map((order) => (
+            <div
+              key={order}
+              className="mt-1 grid items-center gap-1"
+              style={gridCols}
+            >
+              <span
+                className="truncate text-[11px] text-muted-foreground"
+                title={rowLabel(order)}
+              >
+                {rowLabel(order)}
+              </span>
+              {strip.days.map((d) => {
+                const level = densityLevel(strip.cells.get(`${d}|${order}`) ?? 0);
+                return (
+                  <span
+                    key={d}
+                    aria-hidden
+                    className={cn(
+                      "mx-auto block h-4 w-full max-w-[34px] rounded-md transition-colors",
+                      level === 0
+                        ? "bg-surface-raised"
+                        : level === 1
+                          ? "bg-primary/45"
+                          : "bg-primary/85"
+                    )}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <ul className="mt-3 space-y-1 text-[12.5px] leading-relaxed text-muted-foreground">
+        {weekTotal === 0 ? (
+          <li>· {t("strip.allQuiet")}</li>
+        ) : (
+          <>
+            {strip.busiestDate && !strip.uniform ? (
+              <li>
+                · {t("strip.busiest", { day: weekdayName(strip.busiestDate) })}
+              </li>
+            ) : null}
+            {strip.quietestDate && strip.quietestDate !== strip.busiestDate ? (
+              <li>
+                · {t("strip.quietest", { day: weekdayName(strip.quietestDate) })}
+              </li>
+            ) : null}
+            {strip.fullestOrder !== null ? (
+              <li>
+                · {t("strip.fullest", { period: rowLabel(strip.fullestOrder) })}
+              </li>
+            ) : null}
+            {strip.emptyDays > 0 ? (
+              <li>· {t("strip.emptyDays", { count: fmtNum(strip.emptyDays) })}</li>
+            ) : null}
+            {strip.allDoneDays > 0 ? (
+              <li>· {t("strip.allDone", { count: fmtNum(strip.allDoneDays) })}</li>
+            ) : null}
+          </>
+        )}
+      </ul>
+    </Card>
   );
 }

@@ -26,6 +26,7 @@ export type SettingsSection =
   | "periods"
   | "prayer"
   | "reminders"
+  | "privacy"
   | "data"
   | "about";
 

@@ -2,13 +2,17 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   Check,
   Download,
   HardDriveDownload,
+  History,
   Info,
+  KeyRound,
+  Lock,
+  LockOpen,
   Monitor,
   Moon,
   RotateCcw,
@@ -62,14 +66,25 @@ import { uid } from "@/lib/lifeos/ids";
 import { emitChange } from "@/lib/lifeos/events";
 import { defaultPeriodSettings } from "@/lib/lifeos/defaults";
 import {
+  createAutoBackup,
   downloadBackup,
   getStorageInfo,
+  listAutoBackups,
+  restoreAutoBackup,
   undoRestore,
   validateBackupFile,
   applyRestore,
+  type AutoBackupMeta,
   type StorageInfo,
   type ValidationSummary,
 } from "@/lib/lifeos/services/backup-service";
+import {
+  changePin,
+  hasPin,
+  isValidPinFormat,
+  removePin,
+  setPin,
+} from "@/lib/lifeos/services/pin-service";
 import { checkIntegrity } from "@/lib/lifeos/services/integrity-service";
 import { reSnapshotPeriods } from "@/lib/lifeos/services/planning-service";
 import { toast } from "sonner";
@@ -89,6 +104,7 @@ const SECTIONS = [
   "periods",
   "prayer",
   "reminders",
+  "privacy",
   "data",
   "about",
 ] as const;
@@ -126,6 +142,7 @@ export function SettingsScreen({ section }: { section?: SettingsSection }) {
         {active === "periods" ? <PeriodsSection /> : null}
         {active === "prayer" ? <PrayerSection /> : null}
         {active === "reminders" ? <RemindersSection /> : null}
+        {active === "privacy" ? <PrivacySection /> : null}
         {active === "data" ? <DataSection /> : null}
         {active === "about" ? <AboutSection /> : null}
       </div>
@@ -1028,6 +1045,293 @@ function RemindersSection() {
   );
 }
 
+/* ---------- privacy & optional PIN lock (v1.1) ---------- */
+
+function PrivacySection() {
+  const { t, lang } = useT();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<"view" | "set" | "change" | "remove">("view");
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = () => void hasPin().then(setEnabled);
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const digits = (setter: (v: string) => void) => (v: string) => {
+    setter(v.replace(/\D/g, "").slice(0, 8));
+    setError(null);
+  };
+
+  const localValidate = (): string | null => {
+    if (!isValidPinFormat(next)) return t("privacy.errFormat");
+    if (next !== confirm) return t("privacy.errMismatch");
+    return null;
+  };
+
+  const submitSet = async () => {
+    const bad = localValidate();
+    if (bad) {
+      setError(bad);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await setPin(next);
+      if (res.ok) {
+        toast(t("privacy.savedToast"));
+        setMode("view");
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        refresh();
+      } else if (res.error.message === "The current PIN is wrong.") {
+        setError(t("privacy.errCurrent"));
+      } else {
+        setError(rt(res.error.message));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitChange = async () => {
+    const bad = localValidate();
+    if (bad) {
+      setError(bad);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await changePin(current, next);
+      if (res.ok) {
+        toast(t("privacy.changedToast"));
+        setMode("view");
+        setCurrent("");
+        setNext("");
+        setConfirm("");
+        refresh();
+      } else if (res.error.message === "The current PIN is wrong.") {
+        setError(t("privacy.errCurrent"));
+      } else {
+        setError(rt(res.error.message));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRemove = async () => {
+    setBusy(true);
+    try {
+      const res = await removePin(current);
+      if (res.ok) {
+        toast(t("privacy.removedToast"));
+        setMode("view");
+        setCurrent("");
+        refresh();
+      } else {
+        setError(t("privacy.errCurrent"));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card className="px-4 py-4 md:px-5">
+        <SectionLabel>{t("settings.privacy")}</SectionLabel>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+          {t("privacy.desc")}
+        </p>
+
+        <div className="mt-3 flex items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium",
+              enabled
+                ? "bg-sage/15 text-sage"
+                : "bg-surface-raised text-muted-foreground"
+            )}
+          >
+            {enabled ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+            {enabled ? t("privacy.statusOn") : t("privacy.statusOff")}
+          </span>
+        </div>
+
+        {mode === "view" ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {enabled === false ? (
+              <Button
+                className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
+                onClick={() => {
+                  setMode("set");
+                  setNext("");
+                  setConfirm("");
+                  setError(null);
+                }}
+              >
+                <KeyRound className="h-4 w-4" /> {t("privacy.enable")}
+              </Button>
+            ) : null}
+            {enabled ? (
+              <>
+                <Button
+                  variant="outline"
+                  className="rounded-full border-border bg-surface"
+                  onClick={() => {
+                    setMode("change");
+                    setCurrent("");
+                    setNext("");
+                    setConfirm("");
+                    setError(null);
+                  }}
+                >
+                  {t("privacy.change")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="rounded-full text-muted-foreground"
+                  onClick={() => {
+                    setMode("remove");
+                    setCurrent("");
+                    setError(null);
+                  }}
+                >
+                  {t("privacy.remove")}
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {mode === "set" || mode === "change" ? (
+          <div className="mt-4 max-w-sm space-y-3">
+            {mode === "change" ? (
+              <label className="block">
+                <span className="mb-1.5 block text-[12.5px] font-medium text-ink-soft">
+                  {t("privacy.currentPin")}
+                </span>
+                <Input
+                  value={current}
+                  onChange={(e) => digits(setCurrent)(e.target.value)}
+                  type="password"
+                  inputMode="numeric"
+                  className="h-10 rounded-xl border-border bg-surface"
+                />
+              </label>
+            ) : null}
+            <label className="block">
+              <span className="mb-1.5 block text-[12.5px] font-medium text-ink-soft">
+                {t("privacy.newPin")}
+              </span>
+              <Input
+                value={next}
+                onChange={(e) => digits(setNext)(e.target.value)}
+                type="password"
+                inputMode="numeric"
+                placeholder="••••"
+                className="h-10 rounded-xl border-border bg-surface"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-[12.5px] font-medium text-ink-soft">
+                {t("privacy.confirmPin")}
+              </span>
+              <Input
+                value={confirm}
+                onChange={(e) => digits(setConfirm)(e.target.value)}
+                type="password"
+                inputMode="numeric"
+                placeholder="••••"
+                className="h-10 rounded-xl border-border bg-surface"
+              />
+            </label>
+            {error ? (
+              <p className="text-[12.5px] text-[#a5533c]" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="rounded-full text-muted-foreground"
+                disabled={busy}
+                onClick={() => setMode("view")}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
+                disabled={busy || !next || !confirm || (mode === "change" && !current)}
+                onClick={() =>
+                  void (mode === "set" ? submitSet() : submitChange())
+                }
+              >
+                <Lock className="h-4 w-4" />
+                {mode === "set" ? t("privacy.set") : t("privacy.changeDo")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {mode === "remove" ? (
+          <div className="mt-4 max-w-sm space-y-3">
+            <label className="block">
+              <span className="mb-1.5 block text-[12.5px] font-medium text-ink-soft">
+                {t("privacy.currentPin")}
+              </span>
+              <Input
+                value={current}
+                onChange={(e) => digits(setCurrent)(e.target.value)}
+                type="password"
+                inputMode="numeric"
+                className="h-10 rounded-xl border-border bg-surface"
+              />
+            </label>
+            {error ? (
+              <p className="text-[12.5px] text-[#a5533c]" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="rounded-full text-muted-foreground"
+                disabled={busy}
+                onClick={() => setMode("view")}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-full border-border bg-surface text-[#a5533c]"
+                disabled={busy || !current}
+                onClick={() => void submitRemove()}
+              >
+                <LockOpen className="h-4 w-4" /> {t("privacy.removeDo")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+
+      <Card className="px-4 py-4 md:px-5">
+        <SectionLabel>{t("privacy.forgotTitle")}</SectionLabel>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+          {t("privacy.forgotBody")}
+        </p>
+      </Card>
+      <span className="hidden">{lang}</span>
+    </div>
+  );
+}
+
 /* ---------- data & backup ---------- */
 
 function DataSection() {
@@ -1037,12 +1341,17 @@ function DataSection() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [lastBackup, setLastBackup] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
+  const [autos, setAutos] = useState<AutoBackupMeta[]>([]);
+  const [autoRestoreId, setAutoRestoreId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     void getStorageInfo().then(setInfo);
+    void listAutoBackups().then(setAutos);
   }, []);
 
-  const refresh = () => void getStorageInfo().then(setInfo);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="space-y-4">
@@ -1122,6 +1431,67 @@ function DataSection() {
               )
             : t("data.never")}
         </p>
+      </Card>
+
+      <Card className="px-4 py-4 md:px-5">
+        <SectionLabel>{t("data.autoTitle")}</SectionLabel>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+          {t("data.autoDesc")}
+        </p>
+        <p className="mt-3 text-[12px] text-muted-foreground">
+          {t("data.autoLast")}{" "}
+          {info?.lastAutoBackupAt
+            ? new Date(info.lastAutoBackupAt).toLocaleString(
+                lang === "ar" ? "ar-EG" : undefined
+              )
+            : t("data.autoNever")}
+        </p>
+        {autos.length > 0 ? (
+          <ul className="mt-3 space-y-1.5">
+            {autos.map((auto) => (
+              <li
+                key={auto.id}
+                className="flex items-center justify-between gap-2 rounded-xl border border-border/70 bg-surface/60 px-3 py-2"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-[12.5px] text-ink-soft">
+                  <History className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">
+                    {new Date(auto.at).toLocaleString(
+                      lang === "ar" ? "ar-EG" : undefined
+                    )}
+                  </span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-full border-border bg-surface text-[12px]"
+                  onClick={() => setAutoRestoreId(auto.id)}
+                >
+                  {t("data.autoRestore")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[12px] italic text-muted-foreground">
+            {t("data.autoEmpty")}
+          </p>
+        )}
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            className="rounded-full border-border bg-surface"
+            onClick={async () => {
+              const res = await run(createAutoBackup(), { quiet: true });
+              if (res.ok) {
+                toast(t("data.autoCreatedToast"));
+                refresh();
+              }
+            }}
+          >
+            <Download className="h-4 w-4" /> {t("data.autoCreateNow")}
+          </Button>
+        </div>
       </Card>
 
       {validation ? (
@@ -1252,6 +1622,26 @@ function DataSection() {
           if (res.ok) {
             toast(t("data.restoredToast", { count: res.value.counts.items ?? 0 }));
             setValidation(null);
+            refresh();
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={autoRestoreId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAutoRestoreId(null);
+        }}
+        title={t("data.autoConfirmTitle")}
+        description={t("data.autoConfirmDesc")}
+        confirmLabel={t("data.autoRestore")}
+        danger
+        onConfirm={async () => {
+          if (!autoRestoreId) return;
+          const res = await run(restoreAutoBackup(autoRestoreId), { quiet: true });
+          setAutoRestoreId(null);
+          if (res.ok) {
+            toast(t("data.restoredToast", { count: res.value.counts.items ?? 0 }));
             refresh();
           }
         }}

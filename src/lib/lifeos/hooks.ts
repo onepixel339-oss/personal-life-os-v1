@@ -12,6 +12,7 @@ import {
 } from "./services/recurrence-service";
 import { resolvePeriodsForDate, proposePeriodSettingId } from "./services/planning-service";
 import { computeSuggestions, type ResumeTrigger } from "./services/resume-service";
+import type { StripEntry } from "./services/week-strip";
 import { todayLocal, weekStart } from "./dates";
 import type {
   DailyEntry,
@@ -687,6 +688,41 @@ export function useReviewData(weekStartDate: string) {
       : undefined;
     return { plan, review };
   }, [weekStartDate]);
+}
+
+/** Rows feeding the qualitative week strip on the review screen (v1.1). */
+export function useWeekStripData(
+  days: string[]
+): StripEntry[] | undefined {
+  const daysKey = days.join(",");
+  return useLiveQuery(async () => {
+    const list = daysKey ? daysKey.split(",") : [];
+    if (list.length === 0) return [] as StripEntry[];
+    const plans = await db.dailyPlans.where("date").anyOf(list).toArray();
+    if (plans.length === 0) return [] as StripEntry[];
+    const planIds = plans.map((p) => p.id);
+    const dateByPlanId = new Map(plans.map((p) => [p.id, p.date]));
+    const periodRows = await db.dailyPeriods
+      .where("dailyPlanId")
+      .anyOf(planIds)
+      .toArray();
+    const orderById = new Map(periodRows.map((p) => [p.id, p.order]));
+    const entries = await db.dailyEntries
+      .where("dailyPlanId")
+      .anyOf(planIds)
+      .toArray();
+    const out: StripEntry[] = [];
+    for (const e of entries) {
+      const date = dateByPlanId.get(e.dailyPlanId);
+      if (!date) continue;
+      out.push({
+        date,
+        order: e.periodId ? (orderById.get(e.periodId) ?? 0) : 0,
+        executionStatus: e.executionStatus,
+      });
+    }
+    return out;
+  }, [daysKey]);
 }
 
 export function useItemDetail(itemId: string | null) {

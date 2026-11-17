@@ -5,12 +5,13 @@ import { db, getSetting, setSetting } from "../db";
 import { emitChange } from "../events";
 import { SETTING_KEYS } from "../defaults";
 import { ALL_STORES, type StoreName } from "../db";
+import { getVault, setVault } from "../vault-db";
 import type { Result } from "../types";
 import { err, ok } from "../types";
 
 export const SCHEMA_VERSION = 1;
 export const APP_ID = "personal-life-os";
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.1.0";
 
 export interface BackupFile {
   app: string;
@@ -58,23 +59,33 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/** Read every store + settings once (shared by export & auto-backup). */
+async function collectAllStores(includeSettings: boolean): Promise<{
+  data: Record<string, unknown[]>;
+  counts: Record<string, number>;
+  settings?: Record<string, unknown>;
+}> {
+  const data: Record<string, unknown[]> = {};
+  const counts: Record<string, number> = {};
+  for (const store of ALL_STORES) {
+    const rows = await db.table(store).toArray();
+    data[store] = rows;
+    counts[store] = rows.length;
+  }
+  let settings: Record<string, unknown> | undefined;
+  if (includeSettings) {
+    const rows = await db.appSettings.toArray();
+    settings = {};
+    for (const row of rows) settings[row.key] = row.value;
+  }
+  return { data, counts, settings };
+}
+
 export async function exportBackup(
   includeSettings = true
 ): Promise<Result<{ blob: Blob; filename: string }>> {
   try {
-    const data: Record<string, unknown[]> = {};
-    const counts: Record<string, number> = {};
-    for (const store of ALL_STORES) {
-      const rows = await db.table(store).toArray();
-      data[store] = rows;
-      counts[store] = rows.length;
-    }
-    let settings: Record<string, unknown> | undefined;
-    if (includeSettings) {
-      const rows = await db.appSettings.toArray();
-      settings = {};
-      for (const row of rows) settings[row.key] = row.value;
-    }
+    const { data, counts, settings } = await collectAllStores(includeSettings);
     const checksum = await computeChecksum(data);
     const now = new Date();
     const payload: BackupFile = {
@@ -369,6 +380,7 @@ export interface StorageInfo {
   persisted: boolean | null;
   counts: Record<string, number>;
   lastBackupAt: number | null;
+  lastAutoBackupAt: number | null;
 }
 
 export async function getStorageInfo(): Promise<StorageInfo> {
@@ -394,13 +406,148 @@ export async function getStorageInfo(): Promise<StorageInfo> {
     counts[store] = await db.table(store).count();
   }
   const lastBackupRow = await db.appSettings.get(SETTING_KEYS.lastBackupAt);
+  const autos = await getVault<AutoBackup[]>(VAULT_KEY_AUTO, []);
   return {
     usage,
     quota,
     persisted,
     counts,
     lastBackupAt: (lastBackupRow?.value as number) ?? null,
+    lastAutoBackupAt: autos[0]?.at ?? null,
   };
+}
+
+/* ---------- on-device automatic backups (v1.1) ----------
+   A quiet weekly snapshot kept INSIDE the device (vault DB), immune to
+   restores and wipes of the main DB. Survives "I lost my export file". */
+
+export const AUTO_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+export const AUTO_BACKUP_KEEP = 3;
+export const AUTO_BACKUP_MAX_BYTES = 20 * 1024 * 1024;
+const VAULT_KEY_AUTO = "autoBackups";
+
+export interface AutoBackup {
+  id: string;
+  at: number;
+  appVersion: string;
+  counts: Record<string, number>;
+  data: Record<string, unknown[]>;
+  settings?: Record<string, unknown>;
+}
+
+export interface AutoBackupMeta {
+  id: string;
+  at: number;
+  counts: Record<string, number>;
+}
+
+export interface MaybeAutoBackupResult {
+  created: boolean;
+  reason?: "not-registered" | "too-soon" | "empty" | "too-large" | "error";
+}
+
+async function isRegisteredUser(): Promise<boolean> {
+  const row = await db.appSettings.get(SETTING_KEYS.userName);
+  return typeof row?.value === "string" && (row.value as string).trim() !== "";
+}
+
+/** Force-create a snapshot now (used by the Data screen button + tests). */
+export async function createAutoBackup(
+  nowMs = Date.now()
+): Promise<Result<AutoBackupMeta>> {
+  try {
+    const { data, counts, settings } = await collectAllStores(true);
+    if (JSON.stringify(data).length > AUTO_BACKUP_MAX_BYTES) {
+      return err({
+        code: "write_failed",
+        message: "This database became too large for an on-device snapshot.",
+      });
+    }
+    const backup: AutoBackup = {
+      id: `auto-${nowMs}`,
+      at: nowMs,
+      appVersion: APP_VERSION,
+      counts,
+      data,
+      settings,
+    };
+    const existing = await getVault<AutoBackup[]>(VAULT_KEY_AUTO, []);
+    const kept = [backup, ...existing]
+      .sort((a, b) => b.at - a.at)
+      .slice(0, AUTO_BACKUP_KEEP);
+    await setVault(VAULT_KEY_AUTO, kept);
+    return ok({ id: backup.id, at: backup.at, counts: backup.counts });
+  } catch (e) {
+    console.error("createAutoBackup failed", e);
+    return err({ code: "write_failed", message: "Couldn't write the auto-backup." });
+  }
+}
+
+/** User content stores — seeded settings/periods never count as "data". */
+const CONTENT_STORES: StoreName[] = [
+  "items",
+  "spaces",
+  "noteDetails",
+  "entertainmentDetails",
+  "inboxEntries",
+  "weeklyEntries",
+  "dailyEntries",
+  "routines",
+];
+
+/** Boot-time check: quietly snapshot at most once a week. Never throws. */
+export async function maybeAutoBackup(
+  nowMs = Date.now()
+): Promise<MaybeAutoBackupResult> {
+  try {
+    if (!(await isRegisteredUser())) {
+      return { created: false, reason: "not-registered" };
+    }
+    const existing = await getVault<AutoBackup[]>(VAULT_KEY_AUTO, []);
+    const latest = existing[0];
+    if (latest && nowMs - latest.at < AUTO_BACKUP_INTERVAL_MS) {
+      return { created: false, reason: "too-soon" };
+    }
+    let contentRows = 0;
+    for (const store of CONTENT_STORES) {
+      contentRows += await db.table(store).count();
+    }
+    if (contentRows === 0) {
+      return { created: false, reason: "empty" };
+    }
+    const res = await createAutoBackup(nowMs);
+    if (!res.ok) return { created: false, reason: "error" };
+    return { created: true };
+  } catch (e) {
+    console.error("maybeAutoBackup failed", e);
+    return { created: false, reason: "error" };
+  }
+}
+
+export async function listAutoBackups(): Promise<AutoBackupMeta[]> {
+  const existing = await getVault<AutoBackup[]>(VAULT_KEY_AUTO, []);
+  return existing
+    .sort((a, b) => b.at - a.at)
+    .map(({ id, at, counts }) => ({ id, at, counts }));
+}
+
+export async function getAutoBackup(id: string): Promise<AutoBackup | null> {
+  const existing = await getVault<AutoBackup[]>(VAULT_KEY_AUTO, []);
+  return existing.find((b) => b.id === id) ?? null;
+}
+
+/** Restore an on-device snapshot through the same atomic path as files. */
+export async function restoreAutoBackup(
+  id: string
+): Promise<Result<RestoreReport>> {
+  const backup = await getAutoBackup(id);
+  if (!backup) {
+    return err({
+      code: "not_found",
+      message: "No restore snapshot is available.",
+    });
+  }
+  return applyRestore(backup.data, backup.settings);
 }
 
 export type { StoreName };
