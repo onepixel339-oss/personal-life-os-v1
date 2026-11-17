@@ -193,8 +193,25 @@ export function QuickAddSheet() {
       }
       if (!itemId) return;
       const finalItemId = itemId;
+      // Recurrence decision — computed ONCE and shared by placement and rule
+      // creation: when a rule will exist, the rule itself carries the period
+      // and the time (and generates today's occurrence), so we must NOT also
+      // create a manual one-off placement — that duplicate row was the single
+      // most confusing moment of the first session.
+      const patternMap: Record<string, RecurrencePattern> = {
+        daily: "daily",
+        weekdays: "weekdays",
+        weekly: "weekly",
+        monthly: "monthly",
+      };
+      const repeatPattern = patternMap[repeat] as RecurrencePattern | undefined;
+      const willRepeat =
+        !!repeatPattern &&
+        repeat !== "none" &&
+        type !== "note" &&
+        type !== "entertainment";
       // context placement
-      if (context.source === "today" && today) {
+      if (context.source === "today" && today && !willRepeat) {
         const addRes = await run(
           addEntryToDay({
             date: today,
@@ -212,7 +229,7 @@ export function QuickAddSheet() {
         }
         placementLabel = t("qa.addedToday");
       }
-      if (context.source === "weekly" && week) {
+      if (context.source === "weekly" && week && !willRepeat) {
         await run(
           addEntryToWeek({
             weekStartDate: week,
@@ -227,29 +244,23 @@ export function QuickAddSheet() {
         await run(addItemToSpace(finalItemId, spaceId), { quiet: true });
         placementLabel = t("qa.addedSpace");
       }
-      // recurrence (simple patterns; full editor lives in the item sheet)
-      if (repeat !== "none" && type !== "note" && type !== "entertainment") {
-        const patternMap: Record<string, RecurrencePattern> = {
-          daily: "daily",
-          weekdays: "weekdays",
-          weekly: "weekly",
-          monthly: "monthly",
-        };
-        const pattern = patternMap[repeat];
-        if (pattern) {
-          await run(
-            createRule({
-              itemId: finalItemId,
-              pattern,
-              interval: 1,
-              byWeekday: pattern === "weekdays" ? [0, 1, 2, 3, 4] : undefined,
-              byMonthDay: pattern === "monthly" ? 1 : undefined,
-              startDate: today || todayLocal(),
-              weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? 6) as 0 | 1 | 2 | 3 | 4 | 5 | 6),
-            }),
-            { quiet: true }
-          );
-        }
+      // recurrence — the rule carries the period/time so every occurrence
+      // (today's included) lands where the user chose, every single day.
+      if (willRepeat && repeatPattern) {
+        await run(
+          createRule({
+            itemId: finalItemId,
+            pattern: repeatPattern,
+            interval: 1,
+            byWeekday: repeatPattern === "weekdays" ? [0, 1, 2, 3, 4] : undefined,
+            byMonthDay: repeatPattern === "monthly" ? 1 : undefined,
+            startDate: today || todayLocal(),
+            startTime: time || undefined,
+            periodSettingId: period !== "none" ? period : undefined,
+            weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? 6) as 0 | 1 | 2 | 3 | 4 | 5 | 6),
+          }),
+          { quiet: true }
+        );
       }
       toastWithUndo({
         label: `${placementLabel} — “${trimmed}”`,

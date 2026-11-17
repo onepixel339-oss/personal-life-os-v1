@@ -29,6 +29,7 @@ import { periodName, t, useT } from "@/lib/lifeos/i18n";
 import { toArabicDigits } from "@/lib/lifeos/lang-state";
 import type { PeriodSetting, WeeklyReviewAnswers } from "@/lib/lifeos/types";
 import type { InsightSentence } from "@/lib/lifeos/services/review-insights";
+import { groupRowsByItem, pluralClass } from "@/lib/lifeos/services/review-insights";
 import { Card, Chip, EmptyState, PageHeader, SectionLabel } from "../shared/primitives";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
@@ -38,7 +39,9 @@ export function ReviewScreen() {
   const reviewWeekStart = useUIStore((s) => s.reviewWeekStart);
   const setReviewWeek = useUIStore((s) => s.setReviewWeek);
   const prefs = useViewPrefs();
-  const { t } = useT();
+  const { t, lang } = useT();
+  const fmtNum = (n: number) =>
+    lang === "ar" ? toArabicDigits(String(n)) : String(n);
   const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
   const data = useReviewData(reviewWeekStart);
   const weekly = useWeeklyData(reviewWeekStart, firstDay);
@@ -86,16 +89,23 @@ export function ReviewScreen() {
 
   const completedList = useMemo(() => {
     if (!weekly) return [];
-    return weekly.rows.filter(
-      (r) => r.item.status === "completed" || r.item.status === "cancelled"
+    return groupRowsByItem(
+      weekly.rows.filter(
+        (r) => r.item.status === "completed" || r.item.status === "cancelled"
+      )
     );
   }, [weekly]);
   const incompleteList = useMemo(() => {
     if (!weekly) return [];
-    return weekly.rows.filter(
-      (r) => r.item.status !== "completed" && r.item.status !== "cancelled"
+    return groupRowsByItem(
+      weekly.rows.filter(
+        (r) => r.item.status !== "completed" && r.item.status !== "cancelled"
+      )
     );
   }, [weekly]);
+  // one warm phrase per count — مرتين / ٣ مرات / ١٢ مرة
+  const timesLabel = (n: number) =>
+    t(`review.timesThisWeek.${pluralClass(n)}`, { n: fmtNum(n) });
 
   const pastReviews = useLiveQuery(async () => {
     const reviews = await db.weeklyReviews.toArray();
@@ -185,23 +195,37 @@ export function ReviewScreen() {
           <Card key={q.key} className="px-4 py-3.5 md:px-5">
             <div className="flex items-baseline justify-between gap-3">
               <h3 className="font-serif text-[15.5px] text-ink">{q.label}</h3>
-              <span className="text-[11px] text-muted-foreground">{i + 1} / 5</span>
+              <span className="text-[11px] text-muted-foreground">{fmtNum(i + 1)} / {fmtNum(5)}</span>
             </div>
             <p className="mt-0.5 text-[12.5px] italic text-muted-foreground">{q.hint}</p>
             {q.key === "accomplished" && completedList.length > 0 ? (
               <ul className="mt-2 flex flex-wrap gap-1.5">
-                {completedList.map((r) => (
-                  <li key={r.key}>
-                    <Chip tone="sage">{r.item.title}</Chip>
+                {completedList.map((g) => (
+                  <li key={g.itemId}>
+                    <Chip tone="sage">
+                      {g.title}
+                      {g.count > 1 ? (
+                        <span className="ms-1 text-[10.5px] text-muted-foreground">
+                          {timesLabel(g.count)}
+                        </span>
+                      ) : null}
+                    </Chip>
                   </li>
                 ))}
               </ul>
             ) : null}
             {q.key === "incomplete" && incompleteList.length > 0 ? (
               <ul className="mt-2 flex flex-wrap gap-1.5">
-                {incompleteList.map((r) => (
-                  <li key={r.key}>
-                    <Chip tone="muted">{r.item.title}</Chip>
+                {incompleteList.map((g) => (
+                  <li key={g.itemId}>
+                    <Chip tone="muted">
+                      {g.title}
+                      {g.count > 1 ? (
+                        <span className="ms-1 text-[10.5px] text-muted-foreground">
+                          {timesLabel(g.count)}
+                        </span>
+                      ) : null}
+                    </Chip>
                   </li>
                 ))}
               </ul>
@@ -222,10 +246,15 @@ export function ReviewScreen() {
           <Card className="px-4 py-3.5 md:px-5">
             <SectionLabel>{t("review.carryLabel")}</SectionLabel>
             <ul className="mt-2 space-y-1.5">
-              {incompleteList.map((r) => (
-                <li key={r.key} className="flex items-center justify-between gap-2">
+              {incompleteList.map((g) => (
+                <li key={g.itemId} className="flex items-center justify-between gap-2">
                   <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-soft">
-                    {r.item.title}
+                    {g.title}
+                    {g.count > 1 ? (
+                      <span className="ms-1.5 text-[11px] text-muted-foreground">
+                        {timesLabel(g.count)}
+                      </span>
+                    ) : null}
                   </span>
                   <Button
                     variant="outline"
@@ -233,7 +262,7 @@ export function ReviewScreen() {
                     className="h-8 shrink-0 rounded-full border-border bg-surface text-[12px]"
                     onClick={async () => {
                       await run(
-                        addEntryToWeek({ weekStartDate: nextWeekStart, itemId: r.item.id }),
+                        addEntryToWeek({ weekStartDate: nextWeekStart, itemId: g.itemId }),
                         { success: t("review.carriedToast") }
                       );
                     }}
@@ -300,22 +329,29 @@ function InsightsCard({
         {t("insights.desc")}
       </p>
       <ul className="mt-3 space-y-1.5 text-[13px] leading-relaxed text-ink-soft">
-        {insights.sentences.map((s, i) => (
-          <li key={i} className="flex items-start gap-2">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" aria-hidden />
-            <span>
-              {t(
-                s.key,
-                Object.fromEntries(
-                  Object.entries(s.params ?? {}).map(([k, v]) => [
-                    k,
-                    typeof v === "number" ? fmtNum(v) : v,
-                  ])
-                )
-              )}
-            </span>
-          </li>
-        ))}
+        {insights.sentences.map((s, i) => {
+          const n = s.params?.n;
+          // count-bearing sentences pick their grammatical variant
+          // (one / two / many / plus) — "١ حاجات" is now impossible.
+          const key =
+            typeof n === "number" ? `${s.key}.${pluralClass(n)}` : s.key;
+          return (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" aria-hidden />
+              <span>
+                {t(
+                  key,
+                  Object.fromEntries(
+                    Object.entries(s.params ?? {}).map(([k, v]) => [
+                      k,
+                      typeof v === "number" ? fmtNum(v) : v,
+                    ])
+                  )
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );

@@ -29,6 +29,42 @@ export interface InsightSentence {
   params?: Record<string, string | number>;
 }
 
+/** Arabic-style plural class: 1 = one, 2 = two, 3–10 = many, 11+ = plus.
+ *  Powers both the insight sentence variants and the grouped row counts —
+ *  "١ حاجات" was wrong grammar wearing a numeral costume. */
+export type PluralClass = "one" | "two" | "many" | "plus";
+
+export function pluralClass(n: number): PluralClass {
+  if (!Number.isFinite(n)) return "many";
+  if (n === 1) return "one";
+  if (n === 2) return "two";
+  if (n >= 3 && n <= 10) return "many";
+  return "plus";
+}
+
+export interface GroupedRow {
+  itemId: string;
+  title: string;
+  count: number;
+}
+
+/** Collapse per-occurrence rows into one row per item with a count —
+ *  a daily habit that surfaced four days is ONE honest sentence
+ *  ("قراءة القرآن · ٤ مرات"), not four look-alike rows. */
+export function groupRowsByItem(
+  rows: { item: { id: string; title: string } }[]
+): GroupedRow[] {
+  const map = new Map<string, GroupedRow>();
+  for (const r of rows) {
+    const existing = map.get(r.item.id);
+    if (existing) existing.count += 1;
+    else map.set(r.item.id, { itemId: r.item.id, title: r.item.title, count: 1 });
+  }
+  const out = [...map.values()];
+  out.sort((a, b) => b.count - a.count || (a.title < b.title ? -1 : 1));
+  return out;
+}
+
 export type DeltaKind = "quieter" | "busier" | "same" | "none";
 
 /** Qualitative movement vs the previous week (±15% = "the same"). */

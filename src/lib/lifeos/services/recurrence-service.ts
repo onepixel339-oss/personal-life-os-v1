@@ -384,6 +384,31 @@ export async function updateRule(
   }
 }
 
+/** Set (or clear) the default period for every occurrence a rule generates.
+ *  This is the rule-level home: unlike the per-occurrence override (which
+ *  covers a single day), this lands every future occurrence in its period —
+ *  a daily habit finally *lives* somewhere instead of drifting unplaced. */
+export async function setRulePeriod(
+  ruleId: string,
+  periodSettingId: string | undefined
+): Promise<Result<void>> {
+  const rule = await db.recurrenceRules.get(ruleId);
+  if (!rule) return err({ code: "not_found", message: "That repeat is gone." });
+  if (rule.periodSettingId === periodSettingId) return ok(undefined);
+  try {
+    await db.recurrenceRules.update(ruleId, {
+      periodSettingId,
+      version: rule.version + 1,
+      updatedAt: Date.now(),
+    });
+    emitChange(["recurrenceRules"]);
+    return ok(undefined);
+  } catch (e) {
+    console.error("setRulePeriod failed", e);
+    return err({ code: "write_failed", message: "Couldn't save that repeat." });
+  }
+}
+
 /* ---------- pause / resume / disable (§8.5) ---------- */
 
 export async function pauseRule(ruleId: string): Promise<Result<void>> {

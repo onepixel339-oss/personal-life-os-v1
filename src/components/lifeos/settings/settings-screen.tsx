@@ -11,6 +11,7 @@ import {
   History,
   Info,
   KeyRound,
+  LocateFixed,
   Lock,
   LockOpen,
   Monitor,
@@ -814,6 +815,39 @@ function PrayerSection() {
   const { t } = useT();
   const [draft, setDraft] = useState<PrayerSettings | null>(null);
   const [lastSaved, setLastSaved] = useState<PrayerSettings | null>(null);
+  const [locating, setLocating] = useState(false);
+  const useMyLocation = () => {
+    if (!("geolocation" in navigator)) {
+      toast(t("prayer.geoUnsupported"));
+      return;
+    }
+    setLocating(true);
+    // Device-local only: the browser geolocation API reads the phone's own
+    // sensors — nothing is uploaded, no request leaves the device.
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setDraft((d) =>
+          d
+            ? {
+                ...d,
+                calculated: {
+                  ...d.calculated,
+                  latitude: Number(pos.coords.latitude.toFixed(4)),
+                  longitude: Number(pos.coords.longitude.toFixed(4)),
+                },
+              }
+            : d
+        );
+        setLocating(false);
+        toast(t("prayer.geoFilled"));
+      },
+      () => {
+        setLocating(false);
+        toast(t("prayer.geoDenied"));
+      },
+      { timeout: 10000, maximumAge: 600000 }
+    );
+  };
   useEffect(() => {
     if (prefs && !draft) {
       setDraft(prefs.prayer);
@@ -915,6 +949,22 @@ function PrayerSection() {
                 className="h-9 rounded-xl border-border bg-surface"
               />
             </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={locating}
+              onClick={useMyLocation}
+              className="h-8 rounded-full border-border bg-surface text-[12px]"
+            >
+              <LocateFixed className="h-3.5 w-3.5" />
+              {locating ? t("prayer.locating") : t("prayer.useMyLocation")}
+            </Button>
+            <span className="text-[11px] leading-snug text-muted-foreground">
+              {t("prayer.geoPrivacyNote")}
+            </span>
           </div>
           <label className="grid gap-1">
             <span className="text-[11.5px] font-medium text-ink-soft">{t("prayer.method")}</span>

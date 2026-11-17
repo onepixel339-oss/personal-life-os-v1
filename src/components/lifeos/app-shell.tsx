@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { useInboxCount, useLifeToday, useSpaces, useTodayData, useUserName, useViewPrefs, useMinuteTick } from "@/lib/lifeos/hooks";
 import { useT, initI18n, rt, t, periodName } from "@/lib/lifeos/i18n";
+import { toArabicDigits } from "@/lib/lifeos/lang-state";
 import { timeToMinutes, nowMinutes, formatTime } from "@/lib/lifeos/dates";
 import { ensureSearchStarted } from "@/lib/lifeos/services/search-service";
 import { handleUndoShortcut } from "@/lib/lifeos/services/history-service";
@@ -385,11 +386,18 @@ export function AppShell() {
         {/* main content */}
         <main className="min-w-0 flex-1 px-4 pb-28 pt-5 md:px-7 lg:pb-14 lg:pt-7">
           <div className="mx-auto max-w-[720px]">{screen}</div>
-          {welcome ? <WelcomeCard onClose={() => setWelcome(false)} onOpenSetup={() => setMakeItYoursOpen(true)} /> : null}
-          {installHint ? <InstallHintCard onDone={() => setInstallHint(false)} /> : null}
-          {tzHint ? <TzHintCard onDone={() => setTzHint(false)} /> : null}
-          {fridayAlarm ? <FridayAlarmCard onDone={() => setFridayAlarm(false)} /> : null}
-          {ramadanCard ? <RamadanCard onDone={() => setRamadanCard(false)} /> : null}
+          {/* first-launch cards live on the Today page only — they used to
+              trail the user across every screen (review, settings, inbox…),
+              which read as clutter, not welcome. */}
+          {route.name === "today" ? (
+            <div className="mx-auto mt-4 max-w-[720px] space-y-3">
+              {welcome ? <WelcomeCard onClose={() => setWelcome(false)} onOpenSetup={() => setMakeItYoursOpen(true)} /> : null}
+              {installHint ? <InstallHintCard onDone={() => setInstallHint(false)} /> : null}
+              {tzHint ? <TzHintCard onDone={() => setTzHint(false)} /> : null}
+              {fridayAlarm ? <FridayAlarmCard onDone={() => setFridayAlarm(false)} /> : null}
+              {ramadanCard ? <RamadanCard onDone={() => setRamadanCard(false)} /> : null}
+            </div>
+          ) : null}
         </main>
 
         {/* right context panel */}
@@ -540,17 +548,18 @@ function RailList() {
 function InboxBadge({ withLabel }: { withLabel?: boolean }) {
   const prefs = useViewPrefs();
   const count = useInboxCount();
-  const { t } = useT();
+  const { t, lang } = useT();
   if (!prefs?.inboxBadge || count === 0) return null;
+  const shown = lang === "ar" ? toArabicDigits(String(count)) : String(count);
   return (
     <span
       className={cn(
         "ms-auto inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-medium",
         "bg-primary-soft/70 text-primary-deep"
       )}
-      aria-label={t("shell.inboxBadge", { count })}
+      aria-label={t("shell.inboxBadge", { count: shown })}
     >
-      {count}
+      {shown}
       {withLabel ? "" : ""}
     </span>
   );

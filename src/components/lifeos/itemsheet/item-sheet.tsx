@@ -9,6 +9,7 @@ import {
   Bookmark,
   BookmarkPlus,
   CalendarPlus,
+  CalendarRange,
   Clock,
   Eye,
   Film,
@@ -67,7 +68,7 @@ import {
   VALID_STATUS_BY_TYPE,
   ENT_STATUS_MAP,
 } from "@/lib/lifeos/types";
-import { mediaTypeLabel, progressLabel, statusLabel, t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { mediaTypeLabel, periodName, progressLabel, statusLabel, t, typeLabel, useT } from "@/lib/lifeos/i18n";
 import {
   addItemToSpace,
   archiveItem,
@@ -82,7 +83,7 @@ import {
   addRelationship,
   removeRelationship,
 } from "@/lib/lifeos/services/item-service";
-import { createRule, disableRule, pauseRule, resumeRule } from "@/lib/lifeos/services/recurrence-service";
+import { createRule, disableRule, pauseRule, resumeRule, setRulePeriod } from "@/lib/lifeos/services/recurrence-service";
 import { updateMedia } from "@/lib/lifeos/services/entertainment-service";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -114,6 +115,10 @@ export function ItemSheet() {
   const setTodayDate = useUIStore((s) => s.setTodayDate);
   const detail = useItemDetail(itemId);
   const spaces = useLiveQuery(() => db.spaces.filter((s) => !s.archivedAt).toArray(), []);
+  const periodSettings = useLiveQuery(
+    () => db.periodSettings.orderBy("order").filter((p) => p.enabled).toArray(),
+    []
+  );
   const { t, lang } = useT();
 
   const [title, setTitle] = useState("");
@@ -593,12 +598,16 @@ export function ItemSheet() {
                     {t("item.doesntRepeat")}
                   </p>
                 ) : (
-                  detail.rules.map((rule) => (
+                  detail.rules.map((rule) => {
+                    const rulePeriod = (periodSettings ?? []).find(
+                      (p) => p.id === rule.periodSettingId
+                    );
+                    return (
                     <div
                       key={rule.id}
                       className="flex items-center justify-between gap-2 rounded-xl border border-border bg-surface-context/60 px-3 py-2"
                     >
-                      <span className="text-[13px] text-ink-soft">
+                      <span className="min-w-0 flex-1 text-[13px] text-ink-soft">
                         {rule.pattern === "daily"
                           ? t("notes.everyDay")
                           : rule.pattern === "weekdays"
@@ -607,9 +616,47 @@ export function ItemSheet() {
                               ? t("item.everyWeeks", { count: rule.interval })
                               : t("item.everyMonths", { count: rule.interval })}
                         <span className="ms-2 text-[11px] text-muted-foreground">
+                          {rulePeriod ? `· ${periodName(rulePeriod.name)}` : ""}
                           {rule.state === "paused" ? `· ${t("item.pausedState")}` : rule.state === "disabled" ? `· ${t("item.stoppedState")}` : ""}
                         </span>
                       </span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 shrink-0 rounded-full px-2 text-[11.5px] text-muted-foreground"
+                          >
+                            <CalendarRange className="h-3 w-3" /> {t("item.rulePeriodBtn")}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-xl border-border bg-surface-raised">
+                          <DropdownMenuLabel className="text-[11px] text-muted-foreground">
+                            {t("item.rulePeriodMenuLabel")}
+                          </DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={async () => {
+                              await run(setRulePeriod(rule.id, undefined), {
+                                success: t("item.rulePeriodCleared"),
+                              });
+                            }}
+                          >
+                            {t("dialog.noPeriod")}
+                          </DropdownMenuItem>
+                          {(periodSettings ?? []).map((p) => (
+                            <DropdownMenuItem
+                              key={p.id}
+                              onClick={async () => {
+                                await run(setRulePeriod(rule.id, p.id), {
+                                  success: t("item.rulePeriodSet"),
+                                });
+                              }}
+                            >
+                              {periodName(p.name)}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       {rule.state === "active" ? (
                         <Button
                           variant="ghost"
@@ -645,7 +692,8 @@ export function ItemSheet() {
                         </Button>
                       )}
                     </div>
-                  ))
+                    );
+                  })
                 )}
                 {detail.rules.some((r) => r.state !== "disabled") ? (
                   <button
@@ -1087,6 +1135,12 @@ function RepeatDialog({
   const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [monthDay, setMonthDay] = useState("1");
   const [lastDay, setLastDay] = useState(false);
+  const [period, setPeriod] = useState<string>("none");
+  const [time, setTime] = useState("");
+  const periodSettings = useLiveQuery(
+    () => db.periodSettings.orderBy("order").filter((p) => p.enabled).toArray(),
+    []
+  );
   const { t } = useT();
   const dayLabels = [
     t("item.day.0"),
@@ -1107,6 +1161,8 @@ function RepeatDialog({
       setWeekdays([0, 1, 2, 3, 4]);
       setMonthDay("1");
       setLastDay(false);
+      setPeriod("none");
+      setTime("");
     }
   }
   const busy = false;
@@ -1154,6 +1210,36 @@ function RepeatDialog({
               className="rounded-xl border-border bg-surface"
             />
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">{t("qa.period")}</span>
+              <Select value={period} onValueChange={setPeriod}>
+                <SelectTrigger className="w-full rounded-xl border-border bg-surface">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-surface-raised">
+                  <SelectItem value="none">{t("dialog.noPeriod")}</SelectItem>
+                  {(periodSettings ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {periodName(p.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">{t("qa.time")}</span>
+              <Input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="rounded-xl border-border bg-surface"
+              />
+            </label>
+          </div>
+          <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+            {t("item.repeatPeriodNote")}
+          </p>
           {pattern === "weekdays" ? (
             <div>
               <span className="text-[12px] font-medium text-ink-soft">{t("item.onDays")}</span>
@@ -1220,6 +1306,8 @@ function RepeatDialog({
                     pattern === "monthly" && !lastDay ? Number(monthDay) || 1 : undefined,
                   monthDayMode: pattern === "monthly" ? (lastDay ? "last" : "day") : undefined,
                   startDate,
+                  startTime: time || undefined,
+                  periodSettingId: period !== "none" ? period : undefined,
                   weekAnchor: (weekAnchor % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6,
                 }),
                 { quiet: true }
