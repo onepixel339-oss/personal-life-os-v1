@@ -21,6 +21,12 @@ export const SETTING_KEYS = {
   restoreSnapshot: "restore.snapshot",
   backupNudgeDismissed: "backup.nudge.dismissed",
   recentSearches: "search.recent",
+  /* v1.2 — life-day, clock hints, Friday ritual, Ramadan rhythm */
+  tzLastOffset: "clock.tzLastOffset",
+  fridayAlarmDismissed: "friday.alarm.dismissed",
+  fridayAlarmDone: "friday.alarm.done",
+  ramadanPeriodsBackup: "ramadan.periods.backup",
+  ramadanPromptShownAt: "ramadan.prompt.shownAt",
 } as const;
 
 export type ViewKind = "list" | "timeline";

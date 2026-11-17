@@ -149,6 +149,7 @@ export function ItemPickerDialog({
           ) : null}
         </DialogHeader>
         <Input
+        dir="auto"
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}

@@ -12,8 +12,10 @@ import {
 } from "./services/recurrence-service";
 import { resolvePeriodsForDate, proposePeriodSettingId } from "./services/planning-service";
 import { computeSuggestions, type ResumeTrigger } from "./services/resume-service";
+import { buildWeekInsights, type InsightsInput } from "./services/review-insights";
 import type { StripEntry } from "./services/week-strip";
-import { todayLocal, weekStart } from "./dates";
+import { lifeDayFor } from "./day-boundary";
+import { addDays, localDayStartMs, todayLocal, weekStart } from "./dates";
 import type {
   DailyEntry,
   DailyPeriod,
@@ -102,6 +104,15 @@ export function useMinuteTick(): number {
     };
   }, []);
   return tick;
+}
+
+/** The Fajr-relative "life day" (v1.2): before Fajr it is still yesterday.
+    Re-evaluates on the minute tick and whenever prayer settings change. */
+export function useLifeToday(): string {
+  const prefs = useViewPrefs();
+  const tick = useMinuteTick();
+  void tick;
+  return lifeDayFor(prefs);
 }
 
 export interface TodayRow {
@@ -469,7 +480,10 @@ export function useSpaces(): { active: Space[]; archived: Space[] } | undefined 
 }
 
 export function useSpaceData(spaceId: string) {
+  const prefs = useViewPrefs();
+  const tick = useMinuteTick();
   return useLiveQuery(async () => {
+    void tick;
     const space = await db.spaces.get(spaceId);
     if (!space) return null;
     const links = await db.itemSpaceLinks
@@ -483,7 +497,7 @@ export function useSpaceData(spaceId: string) {
     const dailyEntries = await db.dailyEntries.toArray();
     const dailyPlans = await db.dailyPlans.toArray();
     const dateByPlan = new Map(dailyPlans.map((p) => [p.id, p.date]));
-    const today = todayLocal();
+    const today = lifeDayFor(prefs);
     const todayItemIds = new Set(
       dailyEntries
         .filter((e) => dateByPlan.get(e.dailyPlanId) === today && e.itemId)
@@ -515,7 +529,7 @@ export function useSpaceData(spaceId: string) {
       todayItemIds,
       weekItemIds,
     };
-  }, [spaceId]);
+  }, [spaceId, prefs, tick]);
 }
 
 export function useNotes() {
@@ -620,6 +634,7 @@ export function useInboxCount(): number {
 
 export function useResumeSuggestions(trigger: ResumeTrigger) {
   const tick = useMinuteTick();
+  const prefs = useViewPrefs();
   return useLiveQuery(async () => {
     void tick;
     const [
@@ -645,7 +660,7 @@ export function useResumeSuggestions(trigger: ResumeTrigger) {
     ]);
     const itemsById = new Map(items.map((i) => [i.id, i]));
     const dateByPlan = new Map(dailyPlans.map((p) => [p.id, p.date]));
-    const today = todayLocal();
+    const today = lifeDayFor(prefs);
     const notes = returnSettings
       .map((settings) => ({ settings, item: itemsById.get(settings.noteItemId) }))
       .filter(
@@ -677,7 +692,7 @@ export function useResumeSuggestions(trigger: ResumeTrigger) {
       ),
       states,
     });
-  }, [trigger, tick]);
+  }, [trigger, tick, prefs]);
 }
 
 export function useReviewData(weekStartDate: string) {
@@ -799,3 +814,136 @@ export function useItemDetail(itemId: string | null) {
 }
 
 export type { DailyPeriod };
+
+/* ---------- v1.2: day closure + review insights ---------- */
+
+/** Is the given (life-)day closed with قفلة اليوم? */
+export function useDayClosed(date: string | null): boolean | undefined {
+  return useLiveQuery(async () => {
+    if (!date) return false;
+    const plan = await db.dailyPlans.where("date").equals(date).first();
+    return typeof plan?.closedAt === "number";
+  }, [date]);
+}
+
+/** The review's three questions, answered from the week's own data (v1.2). */
+export function useReviewInsights(
+  weekStartDate: string,
+  days: string[]
+): ReturnType<typeof buildWeekInsights> | undefined {
+  const daysKey = days.join(",");
+  const prefs = useViewPrefs();
+  return useLiveQuery(async () => {
+    const list = daysKey ? daysKey.split(",") : [];
+    if (list.length === 0) {
+      return buildWeekInsights({
+        days: [],
+        createdCount: 0,
+        capturedCount: 0,
+        completedCount: 0,
+        activityThisWeek: 0,
+        activityPrevWeek: 0,
+        closedDays: 0,
+        absentDays: 0,
+        weekComplete: false,
+        spaces: [],
+      });
+    }
+    const weekStartMs = localDayStartMs(list[0]);
+    const weekEndMs = localDayStartMs(addDays(list[list.length - 1], 1));
+    const prevStartMs = localDayStartMs(addDays(weekStartDate, -7));
+    const prevEndMs = weekStartMs;
+
+    const [items, inbox, activity, spaces, links] = await Promise.all([
+      db.items.toArray(),
+      db.inboxEntries.toArray(),
+      db.activityHistory.toArray(),
+      db.spaces.toArray(),
+      db.itemSpaceLinks.toArray(),
+    ]);
+
+    const createdCount = items.filter(
+      (i) => i.createdAt >= weekStartMs && i.createdAt < weekEndMs
+    ).length;
+    const capturedCount = inbox.filter(
+      (e) => e.createdAt >= weekStartMs && e.createdAt < weekEndMs
+    ).length;
+    const completedCount = items.filter(
+      (i) =>
+        typeof i.completedAt === "number" &&
+        i.completedAt >= weekStartMs &&
+        i.completedAt < weekEndMs
+    ).length;
+
+    const activityThisWeek = activity.filter(
+      (a) => a.timestamp >= weekStartMs && a.timestamp < weekEndMs
+    ).length;
+    const activityPrevWeek = activity.filter(
+      (a) => a.timestamp >= prevStartMs && a.timestamp < prevEndMs
+    ).length;
+
+    const lifeToday = lifeDayFor(prefs);
+    const weekComplete = list[list.length - 1] < lifeToday;
+    let absentDays = 0;
+    for (const day of list) {
+      if (day >= lifeToday) break; // only fully-passed days count
+      const dayStart = localDayStartMs(day);
+      const dayEnd = localDayStartMs(addDays(day, 1));
+      const present = activity.some(
+        (a) => a.timestamp >= dayStart && a.timestamp < dayEnd
+      );
+      if (!present) absentDays++;
+    }
+
+    const closedPlans = await db.dailyPlans
+      .where("date")
+      .anyOf(list)
+      .toArray();
+    const closedDays = closedPlans.filter(
+      (p) => typeof p.closedAt === "number"
+    ).length;
+
+    // spaces touched this week (items created/completed in the window)
+    const weekItemIds = new Set(
+      items
+        .filter(
+          (i) =>
+            (i.createdAt >= weekStartMs && i.createdAt < weekEndMs) ||
+            (typeof i.completedAt === "number" &&
+              i.completedAt >= weekStartMs &&
+              i.completedAt < weekEndMs)
+        )
+        .map((i) => i.id)
+    );
+    const touchedBySpace = new Map<string, number>();
+    for (const link of links) {
+      if (weekItemIds.has(link.itemId)) {
+        touchedBySpace.set(
+          link.spaceId,
+          (touchedBySpace.get(link.spaceId) ?? 0) + 1
+        );
+      }
+    }
+    const spaceRows = spaces
+      .filter((s) => !s.archivedAt)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        touched: touchedBySpace.get(s.id) ?? 0,
+      }));
+
+    const input: InsightsInput = {
+      days: list,
+      createdCount,
+      capturedCount,
+      completedCount,
+      activityThisWeek,
+      activityPrevWeek,
+      closedDays,
+      absentDays,
+      weekComplete,
+      spaces: spaceRows,
+    };
+    return buildWeekInsights(input);
+  }, [daysKey, weekStartDate, prefs]);
+}

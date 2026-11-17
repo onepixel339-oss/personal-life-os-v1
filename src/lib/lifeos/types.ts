@@ -148,6 +148,8 @@ export interface DailyPlan {
   id: string;
   date: string;
   createdAt: number;
+  /** v1.2 "قفلة اليوم" — gentle day closure (non-indexed, no schema bump) */
+  closedAt?: number;
 } // unique(date)
 
 export interface DailyPeriod {

@@ -63,6 +63,7 @@ export function NotesScreen() {
       {creating ? (
         <Card className="mb-4 px-4 py-3.5">
           <Input
+          dir="auto"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -370,6 +371,7 @@ export function NoteEditorScreen({ itemId }: { itemId: string }) {
       </div>
 
       <Textarea
+      dir="auto"
         value={content}
         onChange={(e) => setContent(e.target.value)}
         onBlur={() => saveRef.current()}

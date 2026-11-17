@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Moon, Plus, RefreshCw } from "lucide-react";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import {
+  useLifeToday,
   useMinuteTick,
   useResumeSuggestions,
   useTodayData,
@@ -17,7 +18,6 @@ import {
   formatTime,
   nowMinutes,
   timeToMinutes,
-  todayLocal,
 } from "@/lib/lifeos/dates";
 import type { ResolvedPeriod } from "@/lib/lifeos/types";
 import type { TodayRow } from "@/lib/lifeos/hooks";
@@ -38,6 +38,8 @@ import { SmartResumeCard } from "../shared/smart-resume";
 import { TodayEntryRow } from "./entry-row";
 import { TodayTimeline } from "./timeline-view";
 import { ItemPickerDialog } from "../shared/dialogs";
+import { DayClosureCard } from "./day-closure-card";
+import { isRamadan } from "@/lib/lifeos/ramadan";
 import { cn } from "@/lib/utils";
 
 export function TodayScreen() {
@@ -52,11 +54,15 @@ export function TodayScreen() {
   const userName = useUserName();
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [showNewDay, setShowNewDay] = useState(false);
-  const [seenToday, setSeenToday] = useState(() => todayLocal());
-  const realToday = todayLocal();
+  // v1.2: the day flips at Fajr, not midnight (life-day boundary)
+  const [seenToday, setSeenToday] = useState<string | null>(null);
+  const realToday = useLifeToday();
+  const [ramadan] = useState(() => isRamadan());
   const isToday = todayDate === realToday;
 
-  if (realToday !== seenToday) {
+  if (seenToday === null) {
+    setSeenToday(realToday); // first render: adopt silently, no banner
+  } else if (realToday !== seenToday) {
     setSeenToday(realToday);
     setShowNewDay(true);
   }
@@ -104,7 +110,11 @@ export function TodayScreen() {
   return (
     <div>
       <PageHeader
-        kicker={greeting(userName)}
+        kicker={
+          ramadan
+            ? `${greeting(userName)} · ${t("ramadan.greeting")}`
+            : greeting(userName)
+        }
         title={t("today.title")}
         subtitle={t("today.subtitle")}
         actions={
@@ -237,6 +247,8 @@ export function TodayScreen() {
           isToday={isToday}
         />
       )}
+
+      {isToday ? <DayClosureCard date={todayDate} /> : null}
 
       <ItemPickerDialog
         open={pickerFor !== null}

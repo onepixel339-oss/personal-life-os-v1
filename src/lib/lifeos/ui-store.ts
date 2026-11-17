@@ -42,6 +42,8 @@ export type QuickAddContext =
 interface UIState {
   route: Route;
   todayDate: string;
+  /** v1.2 — the Fajr-relative "life day" (today until Fajr = yesterday) */
+  lifeToday: string;
   weekStartDate: string;
   reviewWeekStart: string;
   itemSheetItemId: string | null;
@@ -52,6 +54,7 @@ interface UIState {
   navigate: (route: Route) => void;
   goToday: () => void;
   setTodayDate: (date: string) => void;
+  syncLifeDay: (lifeDay: string) => void;
   setWeekStartDate: (date: string) => void;
   setReviewWeek: (date: string) => void;
   openItem: (itemId: string) => void;
@@ -67,9 +70,10 @@ function defaultWeekStart(): string {
   return weekStart(todayLocal(), 6);
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   route: { name: "today" },
   todayDate: todayLocal(),
+  lifeToday: todayLocal(),
   weekStartDate: defaultWeekStart(),
   reviewWeekStart: defaultWeekStart(),
   itemSheetItemId: null,
@@ -81,10 +85,17 @@ export const useUIStore = create<UIState>((set) => ({
   goToday: () =>
     set({
       route: { name: "today" },
-      todayDate: todayLocal(),
+      todayDate: get().lifeToday,
       weekStartDate: defaultWeekStart(),
     }),
   setTodayDate: (date) => set({ todayDate: date }),
+  /** Boot/minute sync: the life day flips at Fajr, not at midnight. Only
+      pulls the user along if they haven't navigated to another day. */
+  syncLifeDay: (lifeDay) =>
+    set((s) => ({
+      lifeToday: lifeDay,
+      todayDate: s.todayDate === todayLocal() ? lifeDay : s.todayDate,
+    })),
   setWeekStartDate: (date) => set({ weekStartDate: date }),
   setReviewWeek: (date) => set({ reviewWeekStart: date, route: { name: "review" } }),
   openItem: (itemId) => set({ itemSheetItemId: itemId }),

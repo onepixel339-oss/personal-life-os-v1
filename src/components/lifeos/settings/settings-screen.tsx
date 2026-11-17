@@ -46,8 +46,14 @@ import {
 } from "@/lib/lifeos/i18n";
 import { useUIStore, type SettingsSection } from "@/lib/lifeos/ui-store";
 import { run } from "@/lib/lifeos/run";
-import { db } from "@/lib/lifeos/db";
+import { db, getSetting } from "@/lib/lifeos/db";
 import { SETTING_KEYS } from "@/lib/lifeos/defaults";
+import {
+  clearErrorLog,
+  formatErrorLogText,
+  readErrorLog,
+  type ErrorLogEntry,
+} from "@/lib/lifeos/error-log";
 import {
   setCalendarSettings,
   setInboxBadgeEnabled,
@@ -552,6 +558,7 @@ function PeriodsSection() {
                   <label className="grid gap-1">
                     <span className="text-[11.5px] font-medium text-ink-soft">{t("periods.name")}</span>
                     <Input
+                      dir="auto"
                       value={s.name}
                       onChange={(e) => update(s.id, { name: e.target.value })}
                       className="h-9 rounded-xl border-border bg-surface"
@@ -560,6 +567,7 @@ function PeriodsSection() {
                   <label className="grid gap-1">
                     <span className="text-[11.5px] font-medium text-ink-soft">{t("periods.tagline")}</span>
                     <Input
+                      dir="auto"
                       value={s.tagline ?? ""}
                       onChange={(e) => update(s.id, { tagline: e.target.value })}
                       className="h-9 rounded-xl border-border bg-surface"
@@ -1336,6 +1344,7 @@ function PrivacySection() {
 
 function DataSection() {
   const { t, lang } = useT();
+  const registeredAt = useRegisteredAt();
   const [info, setInfo] = useState<StorageInfo | null>(null);
   const [validation, setValidation] = useState<(ValidationSummary & { data: Record<string, unknown[]>; settings?: Record<string, unknown> }) | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -1343,18 +1352,86 @@ function DataSection() {
   const [checking, setChecking] = useState(false);
   const [autos, setAutos] = useState<AutoBackupMeta[]>([]);
   const [autoRestoreId, setAutoRestoreId] = useState<string | null>(null);
+  // v1.2: monthly export nudge + local error log
+  const [nudge, setNudge] = useState(false);
+  const [errors, setErrors] = useState<ErrorLogEntry[] | null>(null);
+
+  const DAY = 24 * 60 * 60 * 1000;
 
   const refresh = useCallback(() => {
     void getStorageInfo().then(setInfo);
     void listAutoBackups().then(setAutos);
   }, []);
 
+  const downloadNow = useCallback(async () => {
+    const res = await run(downloadBackup(true), { quiet: true });
+    if (res.ok) {
+      toast(t("data.backupSaved", { filename: res.value.filename }));
+      setNudge(false);
+      refresh();
+    }
+  }, [refresh, t]);
+
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    setErrors(readErrorLog());
+    // v1.2: the monthly gentle nudge — a line, never a modal, never a badge
+    void (async () => {
+      const snapshot = await getStorageInfo();
+      const dismissedAt = await getSetting<number | null>(
+        SETTING_KEYS.backupNudgeDismissed,
+        null
+      );
+      if (dismissedAt !== null && Date.now() - dismissedAt < 30 * DAY) {
+        setNudge(false);
+        return;
+      }
+      const hasContent = (snapshot.counts.items ?? 0) > 0;
+      const exportedStale =
+        snapshot.lastBackupAt !== null &&
+        Date.now() - snapshot.lastBackupAt > 30 * DAY;
+      const neverExportedAndOldUser =
+        snapshot.lastBackupAt === null &&
+        registeredAt !== null &&
+        registeredAt !== undefined &&
+        Date.now() - Date.parse(registeredAt) > 30 * DAY;
+      setNudge(hasContent && (exportedStale || neverExportedAndOldUser));
+    })();
+  }, [refresh, registeredAt]);
 
   return (
     <div className="space-y-4">
+      {nudge ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-xl border border-primary-soft bg-primary-soft/20 px-4 py-2.5">
+          <p className="min-w-0 flex-1 text-[13px] leading-relaxed text-ink-soft">
+            {t("data.nudge")}
+          </p>
+          <div className="flex shrink-0 gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full text-[12px] text-muted-foreground"
+              onClick={() => {
+                void db.appSettings.put({
+                  key: SETTING_KEYS.backupNudgeDismissed,
+                  value: Date.now(),
+                  updatedAt: Date.now(),
+                });
+                setNudge(false);
+              }}
+            >
+              {t("data.notNow")}
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-full bg-primary px-3.5 text-[12px] text-primary-foreground hover:bg-primary-deep"
+              onClick={() => void downloadNow()}
+            >
+              <Download className="h-3.5 w-3.5" /> {t("data.nudgeDo")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       <Card className="px-4 py-4 md:px-5">
         <SectionLabel>{t("data.title")}</SectionLabel>
         <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
@@ -1431,6 +1508,9 @@ function DataSection() {
               )
             : t("data.never")}
         </p>
+        <p className="mt-2 text-[12px] italic leading-relaxed text-muted-foreground">
+          {t("data.honestyFile")}
+        </p>
       </Card>
 
       <Card className="px-4 py-4 md:px-5">
@@ -1492,6 +1572,9 @@ function DataSection() {
             <Download className="h-4 w-4" /> {t("data.autoCreateNow")}
           </Button>
         </div>
+        <p className="mt-2 text-[12px] italic leading-relaxed text-muted-foreground">
+          {t("data.honestyAuto")}
+        </p>
       </Card>
 
       {validation ? (
@@ -1557,12 +1640,34 @@ function DataSection() {
               : info?.persisted === false
                 ? t("data.notGranted")
                 : t("data.unknown")}
-          </li>
-          <li>{t("data.itemsCount")} {info?.counts.items ?? t("common.loading")}</li>
+          </li>          <li>{t("data.itemsCount")} {info?.counts.items ?? t("common.loading")}</li>
           <li>{t("data.spacesCount")} {info?.counts.spaces ?? t("common.loading")}</li>
           <li>{t("data.dayPlans")} {info?.counts.dailyPlans ?? t("common.loading")}</li>
           <li>{t("data.weekPlans")} {info?.counts.weeklyPlans ?? t("common.loading")}</li>
         </ul>
+        {info?.persisted === false ? (
+          <div className="mt-3 rounded-xl border border-border/70 bg-surface/60 px-3 py-2.5">
+            <p className="text-[12px] leading-relaxed text-ink-soft">
+              {t("data.persistHonest")}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 h-8 rounded-full border-border bg-surface text-[12px]"
+              onClick={async () => {
+                try {
+                  await navigator.storage?.persist?.();
+                } catch {
+                  /* quiet */
+                }
+                toast(t("data.persistAsked"));
+                refresh();
+              }}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> {t("data.persistAsk")}
+            </Button>
+          </div>
+        ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             variant="outline"
@@ -1597,6 +1702,63 @@ function DataSection() {
             <HardDriveDownload className="h-4 w-4" /> {t("data.undoRestore")}
           </Button>
         </div>
+      </Card>
+
+      <Card className="px-4 py-4 md:px-5">
+        <SectionLabel>{t("data.errorLog")}</SectionLabel>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+          {t("data.errorLogDesc")}
+        </p>
+        {errors !== null && errors.length > 0 ? (
+          <>
+            <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-xl bg-surface-raised px-3 py-2 text-[12px] text-ink-soft">
+              {errors.slice(0, 10).map((e, i) => (
+                <li key={i} dir="auto" className="truncate">
+                  · {e.message}
+                  <span className="text-muted-foreground">
+                    {" "}
+                    {new Date(e.t).toLocaleString(
+                      lang === "ar" ? "ar-EG" : undefined
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-full border-border bg-surface text-[12px]"
+                onClick={async () => {
+                  const text = formatErrorLogText();
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    toast(t("data.errorLogCopied"));
+                  } catch {
+                    toast(text);
+                  }
+                }}
+              >
+                {t("data.errorLogCopy")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-full text-[12px] text-muted-foreground"
+                onClick={() => {
+                  clearErrorLog();
+                  setErrors(readErrorLog());
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> {t("data.errorLogClear")}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <p className="mt-2 text-[12px] italic text-muted-foreground">
+            {t("data.errorLogEmpty")}
+          </p>
+        )}
       </Card>
 
       <Card className="px-4 py-4 md:px-5">

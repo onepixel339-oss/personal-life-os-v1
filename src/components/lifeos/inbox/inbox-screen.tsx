@@ -78,6 +78,7 @@ export function InboxScreen() {
         <div className="flex items-center gap-2.5">
           <InboxIcon className="h-4.5 w-4.5 shrink-0 text-primary/70" />
           <Input
+          dir="auto"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}

@@ -547,6 +547,7 @@ function CreateSpaceDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Input
+          dir="auto"
             autoFocus
             value={name}
             onChange={async (e) => {
@@ -561,6 +562,7 @@ function CreateSpaceDialog({
             className="h-11 rounded-xl border-border bg-surface"
           />
           <Textarea
+          dir="auto"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={t("spaces.descPlaceholder")}
@@ -621,11 +623,13 @@ function EditSpaceDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Input
+          dir="auto"
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="h-11 rounded-xl border-border bg-surface"
           />
           <Textarea
+            dir="auto"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="min-h-[64px] rounded-xl border-border bg-surface"

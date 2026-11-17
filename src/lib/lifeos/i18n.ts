@@ -24,7 +24,7 @@ export const LANG_STORAGE_KEY = "lifeos.lang";
 export const en: Record<string, string> = {
   /* app / shell */
   "app.name": "Personal Life OS",
-  "app.tagline": "Your life, your structure.",
+  "app.tagline": "Your day's quiet companion — at your pace.",
   "shell.search": "Search",
   "shell.quickAdd": "Quick add",
   "shell.offlineReady": "On this device — offline ready",
@@ -79,7 +79,7 @@ export const en: Record<string, string> = {
   /* registration (name only) */
   "register.kicker": "Personal Life OS",
   "register.heading": "Welcome to your life, in your own structure",
-  "register.body": "A calm personal space: days shaped around prayer times, spaces for memory, notes, entertainment and routines — all of it on this device only.",
+  "register.body": "A calm companion for a day you want to shape: periods around prayer times, spaces for memory, notes and routines — all of it on this device only.",
   "register.nameLabel": "Your name",
   "register.namePlaceholder": "What should we call you?",
   "register.hint": "Just your name — no email, no password, no account.",
@@ -133,6 +133,51 @@ export const en: Record<string, string> = {
   "install.installNow": "Install now",
   "install.desktopStep": "In Chrome or Edge, look for the install icon in the address bar.",
   "install.dismiss": "Hide the install hint",
+
+  /* v1.2 — Friday ritual, life day, Ramadan, closure, insights, honest data */
+  "friday.title": "Friday is review day",
+  "friday.body": "This app will never send a notification — that's a promise. But your phone's clock is happy to help: set a Friday alarm called “Weekly review”, an hour after Jumu'ah, and let the week take care of itself.",
+  "friday.bodyRamadan": "This app will never send a notification — that's a promise. In Ramadan, set the Friday alarm after Taraweeh instead — the night is gentler then.",
+  "friday.alarmText": "Weekly review — Friday, an hour after Jumu'ah",
+  "friday.alarmTextRamadan": "Weekly review — Friday, after Taraweeh",
+  "friday.copy": "Copy the alarm text",
+  "friday.copied": "Copied — now paste it into your clock app",
+  "friday.done": "Done — it's set",
+  "friday.dismiss": "Hide the Friday suggestion",
+  "tz.title": "The clock changed",
+  "tz.body": "Summer/winter time flipped, and manual prayer times may have drifted by an hour. Calculated mode follows your device clock on its own — nothing to do there.",
+  "tz.openPrayer": "Review prayer times",
+  "tz.ok": "All good",
+  "tz.dismiss": "Hide the clock hint",
+  "ramadan.greeting": "Ramadan Kareem",
+  "ramadan.cardTitle": "A Ramadan rhythm",
+  "ramadan.cardBody": "In Ramadan the day flips: Suhoor, slow mornings, Iftar, Taraweeh. One tap renames your five periods to match — prayer anchors stay exactly where they are.",
+  "ramadan.cardNote": "It quietly reverts on its own after Ramadan.",
+  "ramadan.apply": "Apply the Ramadan rhythm",
+  "ramadan.notNow": "Not now",
+  "ramadan.appliedToast": "Ramadan rhythm applied",
+  "ramadan.dismiss": "Hide the Ramadan suggestion",
+  "closure.hint": "When the day is done, close it gently — no scores, and nothing counts against you.",
+  "closure.cta": "Close the day",
+  "closure.done": "Your day closed gently — sleep well.",
+  "closure.undo": "Undo",
+  "closure.undoAria": "Undo the day closure",
+  "insights.title": "Your week in three questions",
+  "insights.desc": "Written by your own week — sentences, never scores.",
+  "insights.captured": "You captured {n} things into the inbox.",
+  "insights.created": "You created {n} new things.",
+  "insights.completed": "You finished {n} things.",
+  "insights.quiet": "A quiet week — nothing new was written, and that's fine.",
+  "insights.delta.quieter": "Quieter than last week — a calmer breath.",
+  "insights.delta.busier": "Busier than last week — a fuller week.",
+  "insights.delta.same": "Much like last week — steady.",
+  "insights.closureMost": "Most of your days closed gently.",
+  "insights.closureSome": "Some of your days closed gently.",
+  "insights.absence": "You were away {n} days and came back — that's what matters.",
+  "insights.focus": "The week was all {full} — maybe give {quiet} a day.",
+  "more.reviewToday": "Review day",
+  "more.remindersNoteRamadan": "A note for Ramadan: the weekly review moves to Friday night, after Taraweeh.",
+  "review.fridayNote": "It's Friday — a quarter hour of reflection is plenty.",
 
   /* review week strip (v1.1) */
   "strip.title": "Your week, in shapes",
@@ -345,7 +390,22 @@ export const en: Record<string, string> = {
   "data.autoConfirmTitle": "Restore this auto-backup?",
   "data.autoConfirmDesc": "Everything currently in the app will be replaced by this snapshot. A safety snapshot of the current state is taken first (undoable from “Undo last restore”).",
 
-  "about.version": "Version 1.1.0 · schema 1 · Your life, your structure.",
+  /* v1.2 — honest data: safety net vs insurance, monthly nudge, persist, local error log */
+  "data.nudge": "It's been a while since your last backup file — a good moment to download one.",
+  "data.nudgeDo": "Download it now",
+  "data.honestyFile": "The file lives outside this device — it's the one that protects you from loss.",
+  "data.honestyAuto": "Automatic snapshots live inside this browser — they protect you from mistakes, not from loss.",
+  "data.persistHonest": "The browser may still clean this data under storage pressure. You can ask it not to — it takes one tap.",
+  "data.persistAsk": "Ask the browser to protect this data",
+  "data.persistAsked": "Asked — the honest answer shows above",
+  "data.errorLog": "Error log (local only)",
+  "data.errorLogDesc": "The last 50 errors on this device, kept locally — the only “telemetry” this app will ever have. Copy them if you ever report a problem.",
+  "data.errorLogEmpty": "No errors recorded — a quiet device.",
+  "data.errorLogCopy": "Copy the log",
+  "data.errorLogCopied": "Log copied",
+  "data.errorLogClear": "Clear",
+
+  "about.version": "Version 1.2.0 · schema 1 · Your day's quiet companion.",
   "about.body": "A calm, flexible personal environment: daily planning, weekly focus, spaces for memory, notes, entertainment and routines — offline, private, no accounts.",
   "about.bullet1": "All data stays in this browser's IndexedDB",
   "about.bullet2": "No analytics, no network calls",
@@ -847,7 +907,7 @@ export const en: Record<string, string> = {
 export const ar: Record<string, string> = {
   /* app / shell */
   "app.name": "نظام الحياة الشخصي",
-  "app.tagline": "حياتك، بهيكلٍ من عندك.",
+  "app.tagline": "رفيق يومك، براحتك.",
   "shell.search": "بحث",
   "shell.quickAdd": "إضافة سريعة",
   "shell.offlineReady": "على هذا الجهاز — يعمل دون اتصال",
@@ -902,7 +962,7 @@ export const ar: Record<string, string> = {
   /* registration (name only) */
   "register.kicker": "نظام الحياة الشخصي",
   "register.heading": "أهلاً بك في حياتك، بهيكلٍ من عندك",
-  "register.body": "مساحة شخصية هادئة: أيام تتشكل حول أوقات الصلاة، مساحات للذاكرة، ملاحظات، ترفيه وروتين — كل ذلك على هذا الجهاز فقط.",
+  "register.body": "رفيق هادئ ليومك اللي عايز ترتبه: فترات حوالين أوقات الصلاة، ومساحات للذاكرة وملاحظات وروتين — وكل حاجة على جهازك بس.",
   "register.nameLabel": "اسمك",
   "register.namePlaceholder": "بماذا نناديك؟",
   "register.hint": "اسمك فقط — بلا بريد، بلا كلمة مرور، بلا حساب.",
@@ -956,6 +1016,51 @@ export const ar: Record<string, string> = {
   "install.installNow": "ثبّته الآن",
   "install.desktopStep": "في كروم أو إيدج، ابحث عن أيقونة التثبيت في شريط العنوان.",
   "install.dismiss": "إخفاء تلميح التثبيت",
+
+  /* v1.2 — الجمعة، اليوم الحي، رمضان، القفلة، البصيرات، صدق البيانات */
+  "friday.title": "الجمعة يوم المراجعة",
+  "friday.body": "التطبيق ده عمره ما هيبعت إشعار — دي قاعدة. بس منبه موبايلك بيعمل اللازم: حط منبه يوم الجمعة، بعد الصلاة بساعة، اسمه «مراجعة الأسبوع»، وسيب الأسبوع ياخد نفسه.",
+  "friday.bodyRamadan": "التطبيق ده عمره ما هيبعت إشعار — دي قاعدة. في رمضان حط منبه الجمعة بعد التراويح — الليل ساعتها ألطف.",
+  "friday.alarmText": "مراجعة الأسبوع — الجمعة بعد الصلاة بساعة",
+  "friday.alarmTextRamadan": "مراجعة الأسبوع — الجمعة بعد التراويح",
+  "friday.copy": "انسخ نص المنبه",
+  "friday.copied": "اتنسخ — الصقه في تطبيق الساعة",
+  "friday.done": "حليتها",
+  "friday.dismiss": "إخفاء اقتراح الجمعة",
+  "tz.title": "التوقيت اتغيّر",
+  "tz.body": "التوقيت اتقلب (صيفي/شتوي)، والأوقات اليدوية ممكن تكون اتحركت ساعة. الوضع المحسوب بيلحق ساعة جهازك لوحده — مفيش حاجة تتعمل هناك.",
+  "tz.openPrayer": "راجع أوقات الصلاة",
+  "tz.ok": "تمام",
+  "tz.dismiss": "إخفاء تلميح التوقيت",
+  "ramadan.greeting": "رمضان كريم",
+  "ramadan.cardTitle": "إيقاع رمضان",
+  "ramadan.cardBody": "في رمضان اليوم بيتقلب: سحور، صباح هادي، فطار، تراويح. بضغطة واحدة بنعيد تسمية الفترات الخمس على الإيقاع — وأنكورات الصلاة زي ما هي بالظبط.",
+  "ramadan.cardNote": "وبيرجع لحاله لوحده بهدوء بعد رمضان.",
+  "ramadan.apply": "طبّق إيقاع رمضان",
+  "ramadan.notNow": "مش دلوقتي",
+  "ramadan.appliedToast": "اتطبق إيقاع رمضان",
+  "ramadan.dismiss": "إخفاء اقتراح رمضان",
+  "closure.hint": "لما يومك يخلص، اقفله بهدوء — مفيش نقاط، ومفيش حاجة بتتحسب عليك.",
+  "closure.cta": "قفلة اليوم",
+  "closure.done": "يومك اتقفل بهدوء — تصبح على خير.",
+  "closure.undo": "رجّعها",
+  "closure.undoAria": "إلغاء قفلة اليوم",
+  "insights.title": "أسبوعك في تلات أسئلة",
+  "insights.desc": "مكتوبة من أسبوعك نفسه — جُمل، مش درجات.",
+  "insights.captured": "التقطت {n} حاجات في البريد.",
+  "insights.created": "عملت {n} حاجات جديدة.",
+  "insights.completed": "خلّصت {n} حاجات.",
+  "insights.quiet": "أسبوع هادي — مفيش جديد اتكتب، وده عادي جدًا.",
+  "insights.delta.quieter": "أهدى من الأسبوع اللي فات — نفس أهدأ.",
+  "insights.delta.busier": "أكتر زحمة من الأسبوع اللي فات.",
+  "insights.delta.same": "شبه الأسبوع اللي فات — ثابت.",
+  "insights.closureMost": "أغلب أيامك اتقفلت بهدوء.",
+  "insights.closureSome": "قفلت شوية أيام بهدوء.",
+  "insights.absence": "غبت {n} أيام ورجعت — وده اللي يهم.",
+  "insights.focus": "الأسبوع ده كله {full} — ممكن تدي {quiet} يوم.",
+  "more.reviewToday": "يوم المراجعة",
+  "more.remindersNoteRamadan": "ملحوظة رمضان: المراجعة الأسبوعية بتتنقل للجمعة بالليل، بعد التراويح.",
+  "review.fridayNote": "النهارده الجمعة — ربع ساعة مراجعة هتكفي.",
 
   /* review week strip (v1.1) */
   "strip.title": "أسبوعك، في أشكال",
@@ -1168,7 +1273,22 @@ export const ar: Record<string, string> = {
   "data.autoConfirmTitle": "استعادة هذه النسخة التلقائية؟",
   "data.autoConfirmDesc": "كل ما في التطبيق حالياً سيُستبدل بهذه اللقطة. وتُلتقط أولاً لقطة أمان للوضع الحالي (يمكن التراجع عنها عبر «التراجع عن آخر استعادة»).",
 
-  "about.version": "الإصدار 1.1.0 · مخطط 1 · حياتك، بهيكلٍ من عندك.",
+  /* v1.2 — صدق البيانات: شبكة الأمان مقابل التأمين، التذكير الشهري، الحماية، سجل الأخطاء */
+  "data.nudge": "عدى وقت على آخر ملف نسخة نزّلته — دلوقتي وقت مناسب تنزّل واحد.",
+  "data.nudgeDo": "نزّلها دلوقتي",
+  "data.honestyFile": "الملف بيعيش بره الجهاز — ده اللي بيحميك من الفقد.",
+  "data.honestyAuto": "النسخ التلقائية جوه المتصفح ده — بتحميك من الغلط، مش من الفقد.",
+  "data.persistHonest": "المتصفح ممكن ينضّف البيانات دي لو الذاكرة ضاقت. تقدر تطلب منه ميعملش — بضغطة واحدة.",
+  "data.persistAsk": "اطلب من المتصفح حماية البيانات دي",
+  "data.persistAsked": "اتطلب — والإجابة الصادقة هتظهر فوق",
+  "data.errorLog": "سجل الأخطاء (محلي بس)",
+  "data.errorLogDesc": "آخر ٥٠ خطأ على الجهاز ده، محفوظين محليًا — ده الـ«تليمتري» الوحيد اللي هيبقى عند التطبيق. انسخهم لو بعت أي مشكلة.",
+  "data.errorLogEmpty": "مفيش أخطاء متسجلة — جهاز هادي.",
+  "data.errorLogCopy": "انسخ السجل",
+  "data.errorLogCopied": "السجل اتنسخ",
+  "data.errorLogClear": "امسح",
+
+  "about.version": "الإصدار 1.2.0 · مخطط 1 · رفيق يومك، براحتك.",
   "about.body": "بيئة شخصية هادئة ومرنة: تخطيط يومي، تركيز أسبوعي، مساحات للذاكرة، ملاحظات وترفيه وروتين — دون اتصال، خاصة، بلا حسابات.",
   "about.bullet1": "كل البيانات تبقى في IndexedDB بهذا المتصفح",
   "about.bullet2": "لا تحليلات ولا اتصالات شبكية",
@@ -1846,6 +1966,12 @@ const PERIOD_AR: Record<string, string> = {
   Afternoon: "العصر",
   Evening: "المساء",
   Night: "الليل",
+  /* Ramadan rhythm (v1.2) */
+  Suhoor: "السحور",
+  "Ramadan Morning": "صباح رمضان",
+  "Before Iftar": "قبل الفطار",
+  "After Iftar": "بعد الفطار",
+  "Taraweeh & Night": "التراويح والليل",
 };
 
 const PERIOD_TAGLINE_AR: Record<string, string> = {
@@ -1854,6 +1980,11 @@ const PERIOD_TAGLINE_AR: Record<string, string> = {
   "Open space": "مساحة مفتوحة",
   "Come back to yourself": "عُد إلى نفسك",
   "Leave it open": "اتركه مفتوحاً",
+  /* Ramadan rhythm (v1.2) */
+  "The quiet night kitchen": "مطبخ الليل الهادي",
+  "Slow hours": "ساعات بطيئة",
+  "Hold it gently": "امسكها بلطف",
+  "The day opens again": "اليوم بيفتح تاني",
 };
 
 const PERIOD_EMPTY_AR: Record<string, string> = {
@@ -1862,6 +1993,12 @@ const PERIOD_EMPTY_AR: Record<string, string> = {
   Afternoon: "مساحة مفتوحة، لا شيء ينتظر.",
   Evening: "غرفة هادئة للمساء.",
   Night: "اترك الليل مفتوحاً.",
+  /* Ramadan rhythm (v1.2) */
+  Suhoor: "ركن هادي للسحور.",
+  "Ramadan Morning": "نهار رمضان على مهله.",
+  "Before Iftar": "ساعات قبل الفطار — براحتك.",
+  "After Iftar": "اليوم فتح تاني.",
+  "Taraweeh & Night": "اترك الليل مفتوحاً.",
 };
 
 const CALC_METHOD_AR: Record<string, string> = {
@@ -1939,6 +2076,12 @@ const PERIOD_EMPTY_EN: Record<string, string> = {
   Afternoon: "Open space, nothing waiting.",
   Evening: "Quiet room for the evening.",
   Night: "Leave the night open.",
+  /* Ramadan rhythm (v1.2) */
+  Suhoor: "A quiet suhoor corner.",
+  "Ramadan Morning": "Ramadan daylight, slowly.",
+  "Before Iftar": "Hours before iftar — gently.",
+  "After Iftar": "The day opens again.",
+  "Taraweeh & Night": "Leave the night open.",
 };
 
 /* Label helpers — always reflect the active language. */

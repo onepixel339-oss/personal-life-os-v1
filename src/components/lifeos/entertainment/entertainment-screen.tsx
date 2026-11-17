@@ -212,6 +212,7 @@ function AddMediaDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Input
+          dir="auto"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}

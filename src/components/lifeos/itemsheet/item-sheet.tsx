@@ -198,6 +198,7 @@ export function ItemSheet() {
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <input
+              dir="auto"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onBlur={commitEdits}
@@ -339,6 +340,7 @@ export function ItemSheet() {
           <section>
             <SectionLabel>{t("item.about")}</SectionLabel>
             <Textarea
+            dir="auto"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={commitEdits}
@@ -1042,6 +1044,7 @@ function ProjectFields({ itemId }: { itemId: string }) {
       <SectionLabel>{t("item.project")}</SectionLabel>
       <div className="mt-1.5 grid gap-3">
         <Textarea
+        dir="auto"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
           onBlur={save}

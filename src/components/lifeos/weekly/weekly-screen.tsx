@@ -33,12 +33,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useViewPrefs, useWeeklyData, type WeeklyRow } from "@/lib/lifeos/hooks";
+import { useLifeToday, useViewPrefs, useWeeklyData, type WeeklyRow } from "@/lib/lifeos/hooks";
 import {
   addDays,
   formatDate,
   formatWeekRange,
-  todayLocal,
   weekStart,
   weekdayName,
 } from "@/lib/lifeos/dates";
@@ -85,6 +84,7 @@ export function WeeklyScreen() {
   const { t } = useT();
   const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
   const data = useWeeklyData(weekStartDate, firstDay);
+  const realToday = useLifeToday();
   const [pickerDay, setPickerDay] = useState<string | null>(null);
   const [outcomeOpen, setOutcomeOpen] = useState(false);
   const [outcomeTitle, setOutcomeTitle] = useState("");
@@ -98,7 +98,6 @@ export function WeeklyScreen() {
     );
   }
 
-  const realToday = todayLocal();
   const isCurrentWeek =
     realToday >= data.weekStart && realToday <= data.weekEnd;
   const dateFormat = prefs.calendar.dateFormat as "dmy" | "mdy" | "ymd";
@@ -665,6 +664,7 @@ function OutcomeDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Input
+          dir="auto"
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -672,6 +672,7 @@ function OutcomeDialog({
             className="h-11 rounded-xl border-border bg-surface"
           />
           <Input
+          dir="auto"
             value={subtask}
             onChange={(e) => setSubtask(e.target.value)}
             placeholder={t("weekly.firstStepPlaceholder")}

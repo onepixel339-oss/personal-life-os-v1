@@ -135,6 +135,7 @@ export function SearchDialog() {
         <div className="flex items-center gap-2.5 border-b border-border/70 px-4 py-3">
           <SearchIcon className="h-4.5 w-4.5 shrink-0 text-muted-foreground" />
           <input
+          dir="auto"
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}

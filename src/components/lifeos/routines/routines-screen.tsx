@@ -260,6 +260,7 @@ function AddStepInline({ routineId }: { routineId: string }) {
       }}
     >
       <Input
+      dir="auto"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={t("routines.addStepPlaceholder")}
@@ -320,6 +321,7 @@ function CreateRoutineDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Input
+          dir="auto"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -327,6 +329,7 @@ function CreateRoutineDialog({
             className="h-11 rounded-xl border-border bg-surface"
           />
           <Textarea
+          dir="auto"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={t("routines.descPlaceholder")}
@@ -336,6 +339,7 @@ function CreateRoutineDialog({
             <div key={i} className="flex items-center gap-2">
               <span className="w-4 text-[12px] text-muted-foreground">{i + 1}.</span>
               <Input
+              dir="auto"
                 value={s}
                 onChange={(e) =>
                   setSteps(steps.map((x, j) => (j === i ? e.target.value : x)))

@@ -3,19 +3,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import {
+  useLifeToday,
   usePeriodSettings,
   useReviewData,
+  useReviewInsights,
   useViewPrefs,
   useWeekStripData,
   useWeeklyData,
 } from "@/lib/lifeos/hooks";
-import { addDays, formatWeekRange, weekdayName, weekStart } from "@/lib/lifeos/dates";
-import { todayLocal } from "@/lib/lifeos/dates";
+import { addDays, dayOfWeek, formatWeekRange, weekdayName, weekStart } from "@/lib/lifeos/dates";
 import { run } from "@/lib/lifeos/run";
 import { saveReview } from "@/lib/lifeos/services/review-service";
 import { addEntryToWeek } from "@/lib/lifeos/services/planning-service";
@@ -27,6 +28,7 @@ import {
 import { periodName, t, useT } from "@/lib/lifeos/i18n";
 import { toArabicDigits } from "@/lib/lifeos/lang-state";
 import type { PeriodSetting, WeeklyReviewAnswers } from "@/lib/lifeos/types";
+import type { InsightSentence } from "@/lib/lifeos/services/review-insights";
 import { Card, Chip, EmptyState, PageHeader, SectionLabel } from "../shared/primitives";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
@@ -78,7 +80,9 @@ export function ReviewScreen() {
   }, [answers, loadedFor, reviewWeekStart]);
 
   const nextWeekStart = addDays(reviewWeekStart, 7);
-  const realToday = todayLocal();
+  const realToday = useLifeToday();
+  const isFriday = dayOfWeek(realToday) === 5;
+  const insights = useReviewInsights(reviewWeekStart, weekly?.days ?? []);
 
   const completedList = useMemo(() => {
     if (!weekly) return [];
@@ -165,7 +169,16 @@ export function ReviewScreen() {
         {formatWeekRange(reviewWeekStart, addDays(reviewWeekStart, 6))}
       </p>
 
+      {isFriday ? (
+        <p className="-mt-3 mb-5 flex items-center gap-2 text-[12.5px] italic text-primary-deep">
+          <Sparkle className="h-3.5 w-3.5" />
+          {t("review.fridayNote")}
+        </p>
+      ) : null}
+
       {strip ? <WeekStripCard strip={strip} periodSettings={periodSettings} /> : null}
+
+      {insights ? <InsightsCard insights={insights} /> : null}
 
       <div className="space-y-4">
         {questions.map((q, i) => (
@@ -194,6 +207,7 @@ export function ReviewScreen() {
               </ul>
             ) : null}
             <Textarea
+            dir="auto"
               value={answers[q.key] ?? ""}
               onChange={(e) =>
                 setAnswers((a) => ({ ...a, [q.key]: e.target.value }))
@@ -268,8 +282,46 @@ export function ReviewScreen() {
   );
 }
 
-/* ---------- qualitative week strip (v1.1) — shapes, never numbers ---------- */
+/* ---------- week insights (v1.2) — the week's three questions ---------- */
 
+function InsightsCard({
+  insights,
+}: {
+  insights: { sentences: InsightSentence[] };
+}) {
+  const { t, lang } = useT();
+  const fmtNum = (n: number) =>
+    lang === "ar" ? toArabicDigits(String(n)) : String(n);
+
+  return (
+    <Card className="mb-4 px-4 py-3.5 md:px-5">
+      <SectionLabel>{t("insights.title")}</SectionLabel>
+      <p className="mt-1 text-[12.5px] italic text-muted-foreground">
+        {t("insights.desc")}
+      </p>
+      <ul className="mt-3 space-y-1.5 text-[13px] leading-relaxed text-ink-soft">
+        {insights.sentences.map((s, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" aria-hidden />
+            <span>
+              {t(
+                s.key,
+                Object.fromEntries(
+                  Object.entries(s.params ?? {}).map(([k, v]) => [
+                    k,
+                    typeof v === "number" ? fmtNum(v) : v,
+                  ])
+                )
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+/* ---------- qualitative week strip (v1.1) — shapes, never numbers ---------- */
 function WeekStripCard({
   strip,
   periodSettings,

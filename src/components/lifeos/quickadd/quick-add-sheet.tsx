@@ -294,6 +294,7 @@ export function QuickAddSheet() {
         </DialogHeader>
         <div className="px-5" ref={titleRef}>
           <Input
+          dir="auto"
             autoFocus
             value={title}
             placeholder={
@@ -341,6 +342,7 @@ export function QuickAddSheet() {
           ) : (
             <div className="mt-3 space-y-3">
               <Textarea
+              dir="auto"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t("qa.description")}

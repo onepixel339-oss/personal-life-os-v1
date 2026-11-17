@@ -13,9 +13,10 @@ import {
   UserRound,
 } from "lucide-react";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useRegisteredAt, useUserName } from "@/lib/lifeos/hooks";
-import { formatDate } from "@/lib/lifeos/dates";
+import { useLifeToday, useRegisteredAt, useUserName } from "@/lib/lifeos/hooks";
+import { dayOfWeek, formatDate } from "@/lib/lifeos/dates";
 import { useT } from "@/lib/lifeos/i18n";
+import { isRamadan } from "@/lib/lifeos/ramadan";
 import { Card } from "../shared/primitives";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,9 @@ export function MoreScreen() {
   const { t } = useT();
   const userName = useUserName();
   const registeredAt = useRegisteredAt();
+  const lifeToday = useLifeToday();
+  const isFriday = dayOfWeek(lifeToday) === 5;
+  const ramadan = isRamadan();
 
   const destinations = [
     {
@@ -121,8 +125,11 @@ export function MoreScreen() {
             type="button"
             onClick={() => navigate(route)}
             className={cn(
-              "flex items-start gap-3 rounded-2xl border border-border bg-surface px-4 py-3.5 text-start",
-              "transition-shadow hover:shadow-[var(--shadow-warm)]"
+              "flex items-start gap-3 rounded-2xl border bg-surface px-4 py-3.5 text-start",
+              "transition-shadow hover:shadow-[var(--shadow-warm)]",
+              route.name === "review" && isFriday
+                ? "border-primary/45"
+                : "border-border"
             )}
           >
             <span
@@ -132,7 +139,15 @@ export function MoreScreen() {
               <Icon className="h-4.5 w-4.5" />
             </span>
             <span className="min-w-0">
-              <span className="block font-serif text-[16px] text-ink">{name}</span>
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-serif text-[16px] text-ink">{name}</span>
+                {route.name === "review" && isFriday ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft/60 px-2 py-0.5 text-[10.5px] font-medium text-primary-deep">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
+                    {t("more.reviewToday")}
+                  </span>
+                ) : null}
+              </span>
               <span className="mt-0.5 block text-[12.5px] leading-snug text-muted-foreground">
                 {description}
               </span>
@@ -142,7 +157,7 @@ export function MoreScreen() {
       </div>
       <Card className="mt-4 px-4 py-3">
         <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-          {t("more.remindersNote")}
+          {ramadan ? t("more.remindersNoteRamadan") : t("more.remindersNote")}
         </p>
       </Card>
     </div>

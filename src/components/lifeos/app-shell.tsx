@@ -18,16 +18,24 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useInboxCount, useSpaces, useTodayData, useUserName, useViewPrefs, useMinuteTick } from "@/lib/lifeos/hooks";
+import { useInboxCount, useLifeToday, useSpaces, useTodayData, useUserName, useViewPrefs, useMinuteTick } from "@/lib/lifeos/hooks";
 import { useT, initI18n, rt, t, periodName } from "@/lib/lifeos/i18n";
-import { todayLocal } from "@/lib/lifeos/dates";
 import { timeToMinutes, nowMinutes, formatTime } from "@/lib/lifeos/dates";
 import { ensureSearchStarted } from "@/lib/lifeos/services/search-service";
 import { handleUndoShortcut } from "@/lib/lifeos/services/history-service";
 import { run } from "@/lib/lifeos/run";
 import { capture } from "@/lib/lifeos/services/inbox-service";
-import { SETTING_KEYS } from "@/lib/lifeos/defaults";
-import { db, getSetting } from "@/lib/lifeos/db";
+import { SETTING_KEYS, DEFAULT_PRAYER } from "@/lib/lifeos/defaults";
+import { db, getSetting, setSetting } from "@/lib/lifeos/db";
+import type { PrayerSettings } from "@/lib/lifeos/prayer";
+import { lifeDayFor } from "@/lib/lifeos/day-boundary";
+import { initErrorLogging } from "@/lib/lifeos/error-log";
+import { isRamadan } from "@/lib/lifeos/ramadan";
+import {
+  maybeRevertRamadan,
+  ramadanBackupExists,
+  ramadanPromptRecentlyShown,
+} from "@/lib/lifeos/services/ramadan-service";
 import { hasPin } from "@/lib/lifeos/services/pin-service";
 import { initInstallPromptListener, isStandalone } from "@/lib/lifeos/install-prompt";
 import { TodayScreen } from "./today/today-screen";
@@ -47,6 +55,9 @@ import { ItemSheet } from "./itemsheet/item-sheet";
 import { RegistrationGate } from "./shared/registration-gate";
 import { LockScreen } from "./shared/lock-screen";
 import { InstallHintCard } from "./shared/install-hint";
+import { FridayAlarmCard } from "./shared/friday-alarm-card";
+import { TzHintCard } from "./shared/tz-hint";
+import { RamadanCard } from "./shared/ramadan-card";
 import { cn } from "@/lib/utils";
 
 const PRIMARY = [
@@ -80,6 +91,10 @@ export function AppShell() {
   const [welcome, setWelcome] = useState<boolean | null>(null);
   const [makeItYoursOpen, setMakeItYoursOpen] = useState(false);
   const [installHint, setInstallHint] = useState(false);
+  // v1.2 cards: Friday ritual, DST drift hint, Ramadan rhythm
+  const [fridayAlarm, setFridayAlarm] = useState(false);
+  const [tzHint, setTzHint] = useState(false);
+  const [ramadanCard, setRamadanCard] = useState(false);
   // optional PIN lock (v1.1): `null` = still checking the vault
   const [pinActive, setPinActive] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
@@ -107,6 +122,51 @@ export function AppShell() {
     void getSetting<boolean>(SETTING_KEYS.installHintDismissed, false).then(
       (v) => setInstallHint(!v && !isStandalone())
     );
+    // v1.2: local-only error log (never any network)
+    initErrorLogging();
+    // v1.2: Friday-alarm card — shown once until done/dismissed
+    void Promise.all([
+      getSetting<boolean>(SETTING_KEYS.fridayAlarmDismissed, false),
+      getSetting<boolean>(SETTING_KEYS.fridayAlarmDone, false),
+    ]).then(([dismissed, done]) => setFridayAlarm(!dismissed && !done));
+    // v1.2: a manual prayer schedule drifts an hour when DST flips — say it once
+    void (async () => {
+      try {
+        const offset = new Date().getTimezoneOffset();
+        const stored = await getSetting<number | null>(
+          SETTING_KEYS.tzLastOffset,
+          null
+        );
+        if (stored === null) {
+          await setSetting(SETTING_KEYS.tzLastOffset, offset);
+          return;
+        }
+        if (stored !== offset) {
+          const prayer = await getSetting<PrayerSettings>(
+            SETTING_KEYS.prayer,
+            DEFAULT_PRAYER
+          );
+          if (prayer.mode === "manual") setTzHint(true);
+          else await setSetting(SETTING_KEYS.tzLastOffset, offset);
+        }
+      } catch {
+        /* quiet */
+      }
+    })();
+    // v1.2: Ramadan rhythm — quietly revert after the month; card once a season
+    void maybeRevertRamadan();
+    void (async () => {
+      try {
+        if (!isRamadan()) return;
+        const [hasBackup, shown] = await Promise.all([
+          ramadanBackupExists(),
+          ramadanPromptRecentlyShown(),
+        ]);
+        setRamadanCard(!hasBackup && !shown);
+      } catch {
+        /* quiet */
+      }
+    })();
     return () => {
       window.removeEventListener("online", update);
       window.removeEventListener("offline", update);
@@ -148,6 +208,29 @@ export function AppShell() {
     });
     return () => {
       void unsubscribe.then((off) => off());
+    };
+  }, []);
+
+  // v1.2: the life day flips at Fajr, not midnight — keep the anchor honest
+  useEffect(() => {
+    let alive = true;
+    const sync = async () => {
+      try {
+        const prefs = await getSetting<PrayerSettings>(
+          SETTING_KEYS.prayer,
+          DEFAULT_PRAYER
+        );
+        if (!alive) return;
+        useUIStore.getState().syncLifeDay(lifeDayFor({ prayer: prefs }));
+      } catch {
+        /* quiet */
+      }
+    };
+    void sync();
+    const interval = setInterval(() => void sync(), 60_000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
     };
   }, []);
 
@@ -304,6 +387,9 @@ export function AppShell() {
           <div className="mx-auto max-w-[720px]">{screen}</div>
           {welcome ? <WelcomeCard onClose={() => setWelcome(false)} onOpenSetup={() => setMakeItYoursOpen(true)} /> : null}
           {installHint ? <InstallHintCard onDone={() => setInstallHint(false)} /> : null}
+          {tzHint ? <TzHintCard onDone={() => setTzHint(false)} /> : null}
+          {fridayAlarm ? <FridayAlarmCard onDone={() => setFridayAlarm(false)} /> : null}
+          {ramadanCard ? <RamadanCard onDone={() => setRamadanCard(false)} /> : null}
         </main>
 
         {/* right context panel */}
@@ -473,7 +559,8 @@ function InboxBadge({ withLabel }: { withLabel?: boolean }) {
 /* ---------- right context panel ---------- */
 
 function ContextPanel() {
-  const data = useTodayData(todayLocal());
+  const lifeToday = useLifeToday();
+  const data = useTodayData(lifeToday);
   const spaces = useSpaces();
   const prefs = useViewPrefs();
   const tick = useMinuteTick();
@@ -570,7 +657,7 @@ function ContextPanel() {
         <button
           type="button"
           onClick={() => {
-            setTodayDate(todayLocal());
+            setTodayDate(lifeToday);
             navigate({ name: "today" });
           }}
           className="mt-2 text-[12px] text-muted-foreground underline-offset-2 hover:text-ink-soft hover:underline"

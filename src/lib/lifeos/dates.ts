@@ -77,13 +77,14 @@ export function daysInMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
-/** Local calendar date of "now" on the device (§9.5 rule 2). */
-export function todayLocal(): string {
+/** Local calendar date of "now" on the device (§9.5 rule 2).
+    `nowMs` lets callers (and tests) pin the instant. */
+export function todayLocal(nowMs: number = Date.now()): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(new Date(nowMs));
   const get = (t: string) =>
     Number(parts.find((p) => p.type === t)?.value ?? "0");
   return toDateString(get("year"), get("month"), get("day"));
@@ -251,6 +252,17 @@ export function minutesInPeriod(
 ): boolean {
   const endAbs = end + endOffset * 1440;
   return t >= start && t < endAbs;
+}
+
+/** Epoch ms of local midnight starting date `s` (for timestamp windows).
+    `Date.parse('YYYY-MM-DDT00:00:00')` without an offset is local time by spec. */
+export function localDayStartMs(s: string): number {
+  return Date.parse(`${s}T00:00:00`);
+}
+
+/** Minutes-of-day of a Date in local wall-clock time (0..1439). */
+export function minutesOfDate(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
 }
 
 export function clamp(n: number, lo: number, hi: number): number {
