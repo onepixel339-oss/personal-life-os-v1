@@ -252,6 +252,13 @@ export function QuickAddSheet() {
       // recurrence — the rule carries the period/time so every occurrence
       // (today's included) lands where the user chose, every single day.
       if (willRepeat && repeatPattern) {
+        // v1.6: a picked weekday feeds the weekly rule instead of being
+        // dropped — «يوم أسبوعي» + تكرار أسبوعي يعني القاعدة تعيش في اليوم
+        // ده بالظبط (weekly fires on its start date's weekday).
+        const weeklyStart =
+          repeatPattern === "weekly" && weekDay !== "none"
+            ? weekDay
+            : (today || todayLocal());
         await run(
           createRule({
             itemId: finalItemId,
@@ -259,7 +266,7 @@ export function QuickAddSheet() {
             interval: 1,
             byWeekday: repeatPattern === "weekdays" ? [0, 1, 2, 3, 4] : undefined,
             byMonthDay: repeatPattern === "monthly" ? 1 : undefined,
-            startDate: today || todayLocal(),
+            startDate: weeklyStart,
             startTime: time || undefined,
             periodSettingId: period !== "none" ? period : undefined,
             weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY) as 0 | 1 | 2 | 3 | 4 | 5 | 6),

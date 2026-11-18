@@ -335,9 +335,9 @@ export async function createRule(
     state: "active",
     pattern: input.pattern,
     interval: input.interval,
-    byWeekday: input.byWeekday,
-    byMonthDay: input.byMonthDay,
-    monthDayMode: input.monthDayMode ?? "day",
+    byWeekday: input.pattern === "weekdays" ? input.byWeekday : undefined,
+    byMonthDay: input.pattern === "monthly" ? input.byMonthDay : undefined,
+    monthDayMode: input.pattern === "monthly" ? (input.monthDayMode ?? "day") : undefined,
     weekAnchor: input.weekAnchor,
     startDate: input.startDate,
     endDate: input.endDate,
@@ -381,6 +381,20 @@ export async function updateRule(
     periodSettingId: patch.periodSettingId ?? rule.periodSettingId,
     weekAnchor: rule.weekAnchor,
   };
+  // v1.6: a pattern change wakes its sleeping companions — byWeekday only
+  // means something to weekdays, byMonthDay only to monthly. The weekly
+  // pattern fires on its start date's weekday (the engine's contract), so
+  // stale days stored beside it were dead weight that later edits read as
+  // live values.
+  if (merged.pattern !== "weekdays") {
+    merged.byWeekday = undefined;
+  }
+  if (merged.pattern !== "monthly") {
+    merged.byMonthDay = undefined;
+    merged.monthDayMode = undefined;
+  } else {
+    merged.monthDayMode = merged.monthDayMode ?? "day"; // monthly rules stay whole
+  }
   const problem = validateRuleInput(merged);
   if (problem) return err({ code: "validation", message: problem });
   try {

@@ -434,6 +434,11 @@ function WeeklyRowItem({
           {showChoose ? (
             <Chip tone="terracotta">{t("weekly.weekPassed")}</Chip>
           ) : null}
+          {/* v1.6: the week's intention vs. what actually happened — a quiet
+              check on rows whose day entry reached completed, nothing more. */}
+          {row.done && row.item.status !== "completed" && row.item.status !== "cancelled" ? (
+            <Chip tone="sage">✓ {t("weekly.doneMark")}</Chip>
+          ) : null}
         </span>
       </button>
       <DropdownMenu>
@@ -559,7 +564,7 @@ function WeeklyRowItem({
               itemId: row.item.id,
               periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
-              allowMultiple: true,
+              // v1.6: unified — re-adding moves the entry, never stacks.
             }),
             { quiet: true }
           );
@@ -654,7 +659,9 @@ function WeeklyTimeline({
                         "w-full truncate rounded-md border px-1.5 py-1 text-start text-[11px] leading-tight",
                         row.item.status === "completed" || row.item.status === "cancelled"
                           ? "border-sage/40 bg-sage-soft/60 text-muted-foreground"
-                          : "border-border bg-surface-context/80 text-ink-soft"
+                          : row.done
+                            ? "border-sage/50 bg-surface-context/80 text-ink-soft"
+                            : "border-border bg-surface-context/80 text-ink-soft"
                       )}
                     >
                       {row.item.title}

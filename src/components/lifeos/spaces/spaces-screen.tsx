@@ -554,7 +554,7 @@ export function SpaceScreen({ spaceId }: { spaceId: string }) {
               itemId: addTodayFor.id,
               periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
-              allowMultiple: true,
+              // v1.6: unified — re-adding moves the entry, never stacks.
             }),
             { quiet: true }
           );

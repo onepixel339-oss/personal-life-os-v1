@@ -328,9 +328,9 @@ describe("v1.4 i18n", () => {
     }
   });
 
-  test("the about line follows the release (1.5.0)", () => {
-    expect(en["about.version"]).toContain("1.5.0");
-    expect(ar["about.version"]).toContain("1.5.0");
+  test("the about line follows the release (1.6.0)", () => {
+    expect(en["about.version"]).toContain("1.6.0");
+    expect(ar["about.version"]).toContain("1.6.0");
   });
 
   test("the Arabic lockout message carries the seconds placeholder", () => {

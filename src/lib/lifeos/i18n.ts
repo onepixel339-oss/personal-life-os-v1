@@ -438,7 +438,7 @@ export const en: Record<string, string> = {
   "data.errorLogCopied": "Log copied",
   "data.errorLogClear": "Clear",
 
-  "about.version": "Version 1.5.0 · schema 1 · Your day's quiet companion.",
+  "about.version": "Version 1.6.0 · schema 1 · Your day's quiet companion.",
   "about.body": "A calm, flexible personal environment: daily planning, weekly focus, spaces for memory, notes, entertainment and routines — offline, private, no accounts.",
   "about.bullet1": "All data stays in this browser's IndexedDB",
   "about.bullet2": "No analytics, no network calls",
@@ -572,6 +572,7 @@ export const en: Record<string, string> = {
   "weekly.pickerDesc": "Placing it here never schedules a day.",
   "weekly.joinsToast": "“{title}” joins the week",
   "weekly.weekPassed": "Week passed — choose what to do",
+  "weekly.doneMark": "Done that day",
   "weekly.dayOfThisWeek": "Day of this week",
   "weekly.noDayYetShort": "No day yet",
   "weekly.addToDay": "Add to a day (separate step)",
@@ -1427,7 +1428,7 @@ export const ar: Record<string, string> = {
   "data.errorLogCopied": "السجل اتنسخ",
   "data.errorLogClear": "امسح",
 
-  "about.version": "الإصدار 1.5.0 · مخطط 1 · رفيق يومك، براحتك.",
+  "about.version": "الإصدار 1.6.0 · مخطط 1 · رفيق يومك، براحتك.",
   "about.body": "بيئة شخصية هادئة ومرنة: تخطيط يومي، تركيز أسبوعي، مساحات للذاكرة، ملاحظات وترفيه وروتين — دون اتصال، خاصة، بلا حسابات.",
   "about.bullet1": "كل البيانات تبقى في IndexedDB بهذا المتصفح",
   "about.bullet2": "لا تحليلات ولا اتصالات شبكية",
@@ -1561,6 +1562,7 @@ export const ar: Record<string, string> = {
   "weekly.pickerDesc": "وضعه هنا لا يُجدول يوماً أبداً.",
   "weekly.joinsToast": "«{title}» ينضم إلى الأسبوع",
   "weekly.weekPassed": "انقضى الأسبوع — اختر ما تفعله",
+  "weekly.doneMark": "اتنفذت في يومها",
   "weekly.dayOfThisWeek": "يوم من هذا الأسبوع",
   "weekly.noDayYetShort": "بلا يوم بعد",
   "weekly.addToDay": "إضافة إلى يوم (خطوة منفصلة)",

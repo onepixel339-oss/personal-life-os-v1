@@ -733,7 +733,9 @@ export function ItemSheet() {
               itemId: item.id,
               periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
-              allowMultiple: true,
+              // v1.6: one behavior everywhere — the service's gentle rule
+              // moves an already-placed entry instead of stacking a second.
+              // (Multi-session lives in the entertainment dialog alone.)
             }),
             { quiet: true }
           );

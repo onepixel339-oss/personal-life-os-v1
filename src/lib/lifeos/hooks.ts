@@ -191,6 +191,9 @@ export interface WeeklyRow {
   role: "regular" | "outcome";
   scheduledDate?: string;
   occurrenceKey?: string;
+  /** v1.6 — the item actually reached "completed" on its day.
+   *  A quiet check, not a score; numbers never judge [RULE]. */
+  done?: boolean;
 }
 
 export interface WeeklyData {
@@ -204,9 +207,48 @@ export interface WeeklyData {
   outcomes: WeeklyRow[];
 }
 
+/** The week's seven dates, starting at its anchor. Pure, testable. */
+export function weekDaysOf(weekStartDate: string): string[] {
+  const [y, m, d] = weekStartDate.split("-").map(Number);
+  const days: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(y, m - 1, d + i));
+    days.push(
+      `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(
+        dt.getUTCDate()
+      ).padStart(2, "0")}`
+    );
+  }
+  return days;
+}
+
+/** v1.6 — "what actually happened": for each date, the ids of items whose
+ *  day entry reached "completed" ("date|itemId"). Read-only, no judgment:
+ *  the week's intention stays intention; this just lets the past speak. */
+export async function collectDoneKeys(dates: string[]): Promise<Set<string>> {
+  const plans = await db.dailyPlans.where("date").anyOf(dates).toArray();
+  if (plans.length === 0) return new Set();
+  const dateOfPlan = new Map(plans.map((p) => [p.id, p.date]));
+  const entries = await db.dailyEntries
+    .where("dailyPlanId")
+    .anyOf(plans.map((p) => p.id))
+    .toArray();
+  const keys = new Set<string>();
+  for (const e of entries) {
+    if (e.executionStatus !== "completed" || !e.itemId) continue;
+    const date = dateOfPlan.get(e.dailyPlanId);
+    if (date) keys.add(`${date}|${e.itemId}`);
+  }
+  return keys;
+}
+
 export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyData | undefined {
   const plan = useLiveQuery(
     () => db.weeklyPlans.where("startDate").equals(weekStartDate).first(),
+    [weekStartDate]
+  );
+  const doneKeys = useLiveQuery(
+    () => collectDoneKeys(weekDaysOf(weekStartDate)),
     [weekStartDate]
   );
   const entries = useLiveQuery(
@@ -227,16 +269,7 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
     void plan;
     const itemsById = new Map(items.map((i) => [i.id, i]));
     const weekStartStr = weekStartDate;
-    const days: string[] = [];
-    const [y, m, d] = weekStartStr.split("-").map(Number);
-    for (let i = 0; i < 7; i++) {
-      const dt = new Date(Date.UTC(y, m - 1, d + i));
-      days.push(
-        `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(
-          dt.getUTCDate()
-        ).padStart(2, "0")}`
-      );
-    }
+    const days = weekDaysOf(weekStartDate);
     const weekEnd = days[6];
     void firstDay;
 
@@ -305,6 +338,15 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
       list.sort((a, b) => (sortOrderOf(a) < sortOrderOf(b) ? -1 : 1));
     }
     unscheduled.sort((a, b) => (sortOrderOf(a) < sortOrderOf(b) ? -1 : 1));
+    // v1.6: the done marker rides on top of intention — undefined while the
+    // query loads, never a flash of false negatives.
+    if (doneKeys) {
+      for (const row of rows) {
+        if (row.scheduledDate) {
+          row.done = doneKeys.has(`${row.scheduledDate}|${row.item.id}`);
+        }
+      }
+    }
     return {
       weekStart: weekStartStr,
       weekEnd,
@@ -315,7 +357,7 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
       byDay,
       outcomes,
     };
-  }, [weekStartDate, plan, entries, items, rules, occStates, firstDay]);
+  }, [weekStartDate, plan, entries, items, rules, occStates, firstDay, doneKeys]);
 }
 
 export function useInboxData() {

@@ -253,6 +253,20 @@ export async function startRoutine(
 ): Promise<Result<RoutineExecution>> {
   const routine = await db.routines.get(routineId);
   if (!routine) return err({ code: "not_found", message: "Routine not found." });
+  // v1.6: idempotent — a routine opened twice in a heartbeat (or a runner
+  // effect that fires twice) resumes the SAME in-progress execution instead
+  // of minting a second one. History stays one row per honest start.
+  const running = (
+    await db.routineExecutions.where("routineId").equals(routineId).toArray()
+  ).find((x) => x.date === date && x.state === "in_progress");
+  if (running) {
+    if (dailyEntryId && !running.dailyEntryId) {
+      await db.routineExecutions.update(running.id, { dailyEntryId });
+      emitChange(["routineExecutions"]);
+      return ok({ ...running, dailyEntryId });
+    }
+    return ok(running);
+  }
   const steps = (
     await db.routineItems.where("routineId").equals(routineId).toArray()
   ).sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : 1));
