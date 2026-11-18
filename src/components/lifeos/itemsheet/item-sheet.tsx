@@ -11,7 +11,6 @@ import {
   CalendarRange,
   Clock,
   Eye,
-  Film,
   Link2,
   MoreHorizontal,
   Pause,
@@ -62,11 +61,8 @@ import { useItemDetail, useViewPrefs } from "@/lib/lifeos/hooks";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { run } from "@/lib/lifeos/run";
 import { todayLocal } from "@/lib/lifeos/dates";
-import type { ItemStatus, ItemType, MediaType, ProgressStatus } from "@/lib/lifeos/types";
-import {
-  VALID_STATUS_BY_TYPE,
-  ENT_STATUS_MAP,
-} from "@/lib/lifeos/types";
+import type { ItemStatus, MediaType, ProgressStatus } from "@/lib/lifeos/types";
+import { VALID_STATUS_BY_TYPE } from "@/lib/lifeos/types";
 import { mediaTypeLabel, periodName, progressLabel, statusLabel, t, typeLabel, useT } from "@/lib/lifeos/i18n";
 import {
   addItemToSpace,
@@ -81,7 +77,9 @@ import {
   addRelationship,
   removeRelationship,
 } from "@/lib/lifeos/services/item-service";
+import { convertToEntertainment } from "@/lib/lifeos/services/entertainment-service";
 import { createRule, disableRule, pauseRule, resumeRule, setRulePeriod } from "@/lib/lifeos/services/recurrence-service";
+import { DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import { updateMedia } from "@/lib/lifeos/services/entertainment-service";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -91,25 +89,14 @@ import {
   ItemPickerDialog,
   MoveToSpaceDialog,
 } from "../shared/dialogs";
-import { Chip, Divider, SectionLabel, StatusChip, TypeChip } from "../shared/primitives";
+import { Chip, SectionLabel, StatusChip, TypeChip } from "../shared/primitives";
 import { cn } from "@/lib/utils";
-
-const TYPE_OPTIONS: ItemType[] = [
-  "task",
-  "activity",
-  "event",
-  "idea",
-  "note",
-  "project",
-  "entertainment",
-  "outcome",
-];
 
 export function ItemSheet() {
   // v1.4: the week anchor follows the user's "week starts on" setting —
   // both dialogs below used to hardcode Saturday (6).
   const prefs = useViewPrefs();
-  const firstDayOfWeek = prefs?.calendar.firstDayOfWeek ?? 6;
+  const firstDayOfWeek = prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
   const itemId = useUIStore((s) => s.itemSheetItemId);
   const closeItem = useUIStore((s) => s.closeItem);
   const openItem = useUIStore((s) => s.openItem);
@@ -287,6 +274,18 @@ export function ItemSheet() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={async () => {
+                    // v1.5: entertainment conversion preserves identity and
+                    // seeds editable details (it was missing from this menu —
+                    // only the inbox had it, via a delete-and-replace hack).
+                    await run(convertToEntertainment(item.id), {
+                      success: t("item.nowEntertainmentToast"),
+                    });
+                  }}
+                >
+                  {typeLabel("entertainment")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={async () => {
                     await run(changeItemType(item.id, "outcome"), { quiet: true });
                   }}
                 >
@@ -386,6 +385,7 @@ export function ItemSheet() {
                 <Chip
                   key={space.id}
                   tone="lavender"
+                  asSpanButton
                   title={t("item.openSpace")}
                   onClick={() => navigate({ name: "space", spaceId: space.id })}
                 >
@@ -723,22 +723,20 @@ export function ItemSheet() {
         onOpenChange={setAddToday}
         itemTitle={item.title}
         onConfirm={async (choice) => {
-          const { addEntryToDay, setEntryPeriodBySetting } = await import(
+          const { addEntryToDay } = await import(
             "@/lib/lifeos/services/planning-service"
           );
-          const res = await run(
+          await run(
             addEntryToDay({
               date: choice.date,
               kind: "item",
               itemId: item.id,
+              periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
               allowMultiple: true,
             }),
             { quiet: true }
           );
-          if (res.ok && choice.periodSettingId) {
-            await run(setEntryPeriodBySetting(res.value.id, choice.periodSettingId), { quiet: true });
-          }
         }}
       />
       <AddToWeekDialog
@@ -1049,23 +1047,15 @@ function EntertainmentFields({
           const { addSessionToToday } = await import(
             "@/lib/lifeos/services/entertainment-service"
           );
-          const res = await run(
+          await run(
             addSessionToToday(itemId, {
               date: choice.date,
+              periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
               allowMultiple: true,
             }),
             { success: t("item.sessionAddedToast") }
           );
-          if (res.ok && res.value.entryId && choice.periodSettingId) {
-            const { setEntryPeriodBySetting } = await import(
-              "@/lib/lifeos/services/planning-service"
-            );
-            await run(
-              setEntryPeriodBySetting(res.value.entryId, choice.periodSettingId),
-              { quiet: true }
-            );
-          }
         }}
       />
     </section>
@@ -1175,7 +1165,6 @@ function RepeatDialog({
       setTime("");
     }
   }
-  const busy = false;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md rounded-2xl border-border bg-surface-raised">
@@ -1301,7 +1290,6 @@ function RepeatDialog({
             {t("common.cancel")}
           </Button>
           <Button
-            disabled={busy}
             onClick={async () => {
               const res = await run(
                 createRule({
@@ -1396,5 +1384,3 @@ function PostponeDialog({
     </Dialog>
   );
 }
-
-export { Film, Divider, TYPE_OPTIONS, ENT_STATUS_MAP };

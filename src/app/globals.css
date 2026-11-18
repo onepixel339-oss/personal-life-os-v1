@@ -78,6 +78,13 @@
   --sage: #7b8060;
   --sage-soft: #e9e3d4;
   --lavender-soft: #e7e4ed;
+  /* v1.5 — space identity palette (token keys, never raw hex in data) */
+  --space-terracotta: #a96748;
+  --space-sage: #7b8060;
+  --space-lavender: #8b7fa8;
+  --space-sand: #c4a35a;
+  --space-clay: #b07d54;
+  --space-olive: #8a8a5c;
   --border: #eadbcb;
   --border-strong: #dfb28e;
   --shadow-warm: 0 10px 30px rgba(94, 62, 45, 0.10);
@@ -131,6 +138,13 @@
   --sage: #9aa284;
   --sage-soft: #383c2e;
   --lavender-soft: #363142;
+  /* v1.5 — space identity palette (dark) */
+  --space-terracotta: #cb8a63;
+  --space-sage: #9aa284;
+  --space-lavender: #b0a5cd;
+  --space-sand: #d4b878;
+  --space-clay: #c99a72;
+  --space-olive: #b1b183;
   --border: #4a3c31;
   --border-strong: #6e5644;
   --shadow-warm: 0 10px 30px rgba(0, 0, 0, 0.35);

@@ -781,10 +781,3 @@ export async function resolveItemTitles(
     title: o.title || (o.itemId ? itemsById.get(o.itemId)?.title ?? "" : ""),
   }));
 }
-
-export const PATTERN_LABELS: Record<RecurrencePattern, string> = {
-  daily: "Every day",
-  weekdays: "Selected weekdays",
-  weekly: "Weekly",
-  monthly: "Monthly",
-};

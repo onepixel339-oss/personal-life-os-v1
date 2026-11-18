@@ -1,7 +1,7 @@
 /* EntertainmentService — movies, series, anime, games (§3.7, D8).
    Item.status is always derived from progressStatus; never edited independently. */
 
-import { db } from "../db";
+import { db, logActivity } from "../db";
 import { emitChange } from "../events";
 import type {
   EntertainmentDetails,
@@ -11,7 +11,8 @@ import type {
   Result,
 } from "../types";
 import { ENT_STATUS_MAP, err, ok } from "../types";
-import { createItem } from "./item-service";
+import type { Undoable } from "./history-service";
+import { createItem, changeItemType } from "./item-service";
 import { addEntryToDay } from "./planning-service";
 
 export interface MediaInput {
@@ -137,21 +138,96 @@ export async function getMediaDetails(
   return db.entertainmentDetails.get(itemId);
 }
 
-/** A viewing/gaming session references the same Item — never a copy (§3.7). */
+/** A viewing/gaming session references the same Item — never a copy (§3.7).
+ *  v1.5: the dialog's period choice rides along (same fix as items). */
 export async function addSessionToToday(
   itemId: string,
-  opts: { date: string; periodId?: string; startTime?: string; allowMultiple?: boolean }
-): Promise<Result<{ added: boolean; entryId?: string }>> {
+  opts: {
+    date: string;
+    periodSettingId?: string;
+    startTime?: string;
+    allowMultiple?: boolean;
+  }
+): Promise<
+  Result<{ added: boolean; entryId?: string; alreadyPlaced?: boolean } & Undoable>
+> {
   const res = await addEntryToDay({
     date: opts.date,
     kind: "item",
     itemId,
-    periodId: opts.periodId,
+    periodSettingId: opts.periodSettingId,
     startTime: opts.startTime,
     allowMultiple: opts.allowMultiple,
   });
-  if (!res.ok) return res as Result<{ added: boolean; entryId?: string }>;
-  return ok({ added: true, entryId: res.value.id });
+  if (!res.ok) return res as never;
+  return ok({
+    added: true,
+    entryId: res.value.id,
+    alreadyPlaced: res.value.alreadyPlaced,
+    ...(res.value.undo ? { undo: res.value.undo } : {}),
+  });
+}
+
+/** v1.5: turn an EXISTING item into entertainment — identity preserved
+ *  (links, placements, inbox entry all stay). This closes the old inbox
+ *  path that created a new media item and permanently deleted the original
+ *  with no undo trail. Details are seeded (editable from the item sheet). */
+export async function convertToEntertainment(
+  itemId: string,
+  mediaType: MediaType = "series"
+): Promise<Result<{ itemId: string } & Undoable>> {
+  const item = await db.items.get(itemId);
+  if (!item) return err({ code: "not_found", message: "Item not found." });
+  const existingDetails = await db.entertainmentDetails.get(itemId);
+  const previousType = item.type;
+  // v1.5.1 (review B1): the undo must give the item back EXACTLY as it
+  // was — type, status, and archive stamp — not just the type.
+  const previousStatus = item.status;
+  const previousArchivedAt = item.archivedAt;
+  const createdDetails = !existingDetails;
+  const details: EntertainmentDetails =
+    existingDetails ?? {
+      itemId,
+      mediaType,
+      progressStatus: "planned",
+    };
+  const nextStatus = ENT_STATUS_MAP[details.progressStatus] ?? "active";
+  try {
+    await db.transaction("rw", [db.items, db.entertainmentDetails], async () => {
+      await db.entertainmentDetails.put(details);
+      await db.items.update(itemId, {
+        type: "entertainment",
+        status: item.status === nextStatus ? item.status : nextStatus,
+        updatedAt: Date.now(),
+      });
+    });
+    logActivity("item", itemId, `type:${previousType}->entertainment`);
+    emitChange(["items", "entertainmentDetails"]);
+    return ok({
+      itemId,
+      undo: {
+        label: "Back to its type",
+        undo: async () => {
+          const revert = await changeItemType(itemId, previousType);
+          if (revert.ok) {
+            await db.items.update(itemId, {
+              status: previousStatus,
+              archivedAt: previousArchivedAt,
+              updatedAt: Date.now(),
+            });
+            if (createdDetails) {
+              await db.entertainmentDetails.delete(itemId);
+              emitChange(["entertainmentDetails"]);
+            }
+            emitChange(["items"]);
+          }
+        },
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return err({ code: "write_failed", message: "Couldn't add that." });
+  }
 }
 
 export const MEDIA_LABELS: Record<MediaType, string> = {

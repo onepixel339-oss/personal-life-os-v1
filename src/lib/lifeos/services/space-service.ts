@@ -75,7 +75,13 @@ export async function spaceNameExists(name: string): Promise<boolean> {
 
 export async function updateSpace(
   id: string,
-  patch: { name?: string; description?: string; icon?: string; color?: string }
+  patch: {
+    name?: string;
+    description?: string;
+    /** v1.5.1: `null` explicitly clears (undefined still means "no change"). */
+    icon?: string | null;
+    color?: string | null;
+  }
 ): Promise<Result<Space>> {
   const space = await db.spaces.get(id);
   if (!space) return err({ code: "not_found", message: "Space not found." });
@@ -87,8 +93,8 @@ export async function updateSpace(
     next.name = name;
   }
   if (patch.description !== undefined) next.description = patch.description.slice(0, 2000);
-  if (patch.icon !== undefined) next.icon = patch.icon;
-  if (patch.color !== undefined) next.color = patch.color;
+  if (patch.icon !== undefined) next.icon = patch.icon ?? undefined;
+  if (patch.color !== undefined) next.color = patch.color ?? undefined;
   try {
     await db.spaces.update(id, next);
     emitChange(["spaces"]);
@@ -145,7 +151,6 @@ export async function moveSpace(
   const sorted = [...active].sort((a, b) =>
     a.sortOrder < b.sortOrder ? -1 : a.sortOrder > b.sortOrder ? 1 : 0
   );
-  const idx = sorted.findIndex((s) => s.id === id);
   const without = sorted.filter((s) => s.id !== id);
   let key: string;
   if (targetId === null) {
@@ -156,7 +161,6 @@ export async function moveSpace(
     const after = tIdx >= 0 ? without[tIdx].sortOrder : null;
     key = keyBetween(before, after);
   }
-  void idx;
   try {
     await db.spaces.update(id, { sortOrder: key, updatedAt: Date.now() });
     emitChange(["spaces"]);

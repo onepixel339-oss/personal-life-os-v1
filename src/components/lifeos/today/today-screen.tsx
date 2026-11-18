@@ -3,7 +3,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Moon, Plus, RefreshCw, Sunrise } from "lucide-react";
+import { ChevronLeft, ChevronRight, Moon, Sunrise } from "lucide-react";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import {
   useDayClosed,
@@ -13,12 +13,14 @@ import {
   useResumeSuggestions,
   useTodayData,
   useViewPrefs,
+  useWeekBridge,
 } from "@/lib/lifeos/hooks";
 import {
   addDays,
   diffDays,
   formatDate,
   formatTime,
+  minutesToTime,
   nowMinutes,
   timeToMinutes,
 } from "@/lib/lifeos/dates";
@@ -26,9 +28,13 @@ import type { ResolvedPeriod } from "@/lib/lifeos/types";
 import type { TodayRow } from "@/lib/lifeos/hooks";
 import { greeting, periodEmptyCopy, periodName, periodTagline, useT } from "@/lib/lifeos/i18n";
 import { run } from "@/lib/lifeos/run";
-import { addEntryToDay } from "@/lib/lifeos/services/planning-service";
+import {
+  addEntryToDay,
+  proposePeriodSettingId,
+} from "@/lib/lifeos/services/planning-service";
+import type { WeekBridgeRow } from "@/lib/lifeos/services/planning-service";
 import { setView } from "@/lib/lifeos/services/settings-service";
-import { SETTING_KEYS } from "@/lib/lifeos/defaults";
+import { SETTING_KEYS, DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import { useUserName } from "@/lib/lifeos/hooks";
 import { Button } from "@/components/ui/button";
 import {
@@ -38,6 +44,7 @@ import {
   ViewSwitcher,
 } from "../shared/primitives";
 import { SmartResumeCard } from "../shared/smart-resume";
+import { CoachLine } from "../shared/coach-line";
 import { TodayEntryRow } from "./entry-row";
 import { TodayTimeline } from "./timeline-view";
 import { ItemPickerDialog } from "../shared/dialogs";
@@ -51,6 +58,11 @@ export function TodayScreen() {
   const navigate = useUIStore((s) => s.navigate);
   const data = useTodayData(todayDate);
   const prefs = useViewPrefs();
+  // v1.5: the week → day bridge (what this date's week plan intends)
+  const bridge = useWeekBridge(
+    todayDate,
+    prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY
+  );
   const tick = useMinuteTick();
   const { t } = useT();
   const userName = useUserName();
@@ -82,18 +94,12 @@ export function TodayScreen() {
       : 0;
 
   // Current period + the overnight link (D1)
+  // v1.5: one canonical "which period holds this moment" (the service
+  // helper) — the inline copy used to assume a different fallback duration.
   const currentPeriodId = useMemo(() => {
     if (!data || !isToday) return null;
-    const now = nowMinutes();
-    for (const p of data.periods) {
-      if (!p.startTime) continue;
-      const start = timeToMinutes(p.startTime);
-      const end = p.endTime
-        ? timeToMinutes(p.endTime) + (p.endDayOffset ?? 0) * 1440
-        : start + 90;
-      if (now >= start && now < end) return p.id;
-    }
-    return null;
+    const settingId = proposePeriodSettingId(data.periods, minutesToTime(nowMinutes()));
+    return settingId ? data.periods.find((p) => p.settingId === settingId)?.id ?? null : null;
   }, [data, isToday, tick]);
 
   // Still before Fajr of today? Gentle link to yesterday's plan (D1)
@@ -170,6 +176,10 @@ export function TodayScreen() {
       />
 
       <div className="mb-5 space-y-3">
+        <CoachLine
+          settingKey={SETTING_KEYS.coachToday}
+          messageKey="coach.today"
+        />
         {showNewDay && !isToday ? (
           <div className="flex items-center justify-between gap-3 rounded-xl border border-primary-soft bg-primary-soft/25 px-4 py-2.5">
             <p className="text-[13px] text-ink-soft">
@@ -221,6 +231,10 @@ export function TodayScreen() {
 
         <SmartResumeCard suggestions={suggestions ?? []} />
       </div>
+
+      {bridge && bridge.length > 0 ? (
+        <WeekBridgeSection rows={bridge} date={todayDate} />
+      ) : null}
 
       {view === "list" ? (
         <div className="space-y-4">
@@ -284,7 +298,9 @@ export function TodayScreen() {
               date: todayDate,
               kind: "item",
               itemId: item.id,
-              periodId: pickerFor,
+              // v1.5: by setting id — stable across virtual ids (fresh day)
+              // and real snapshots, so the choice can never dangle.
+              periodSettingId: period?.settingId ?? undefined,
               startTime: undefined,
             }),
             { success: t("today.placedToast", { title: item.title, period: periodName(period?.name ?? "") }) }
@@ -292,6 +308,91 @@ export function TodayScreen() {
         }}
       />
     </div>
+  );
+}
+
+/* ---------- v1.5: من خطة أسبوعك — the week → day bridge ---------- */
+
+function WeekBridgeSection({
+  rows,
+  date,
+}: {
+  rows: WeekBridgeRow[];
+  date: string;
+}) {
+  const { t } = useT();
+  const openItem = useUIStore((s) => s.openItem);
+  const [bringing, setBringing] = useState(false);
+  if (rows.length === 0) return null;
+  const bring = async (itemId: string, title: string) => {
+    await run(
+      addEntryToDay({ date, kind: "item", itemId }),
+      { success: t("today.bridgeBroughtToast", { title }) }
+    );
+  };
+  // v1.5.1 (review N6): bring-all runs sequentially (no sortOrder races)
+  // and speaks ONCE — a stack of identical toasts was noise, not help.
+  const bringAll = async () => {
+    if (bringing) return;
+    setBringing(true);
+    try {
+      for (const r of rows) {
+        await run(
+          addEntryToDay({ date, kind: "item", itemId: r.item.id }),
+          { quiet: true }
+        );
+      }
+      const { toast } = await import("sonner");
+      toast(t("today.bridgeAllBroughtToast"));
+    } finally {
+      setBringing(false);
+    }
+  };
+  return (
+    <section className="mb-4 rounded-2xl border border-dashed border-primary-soft bg-primary-soft/10 px-3.5 py-3 md:px-5">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <div>
+          <h2 className="font-serif text-[16px] text-ink">
+            {t("today.bridgeTitle")}
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            {t("today.bridgeHint")}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={bringing}
+          onClick={() => void bringAll()}
+          className="rounded-full px-2.5 py-1 text-[12px] text-primary-deep transition-colors hover:bg-primary-soft/40"
+        >
+          {t("today.bridgeAddAll")}
+        </button>
+      </header>
+      <ul className="mt-1 flex flex-col">
+        {rows.map((row) => (
+          <li
+            key={row.entry.id}
+            className="flex items-center gap-3 border-t border-border/60 px-1 py-2 first:border-t-0"
+          >
+            <button
+              type="button"
+              onClick={() => openItem(row.item.id)}
+              className="min-w-0 flex-1 truncate text-start text-[14.5px] text-foreground"
+            >
+              {row.item.title}
+            </button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 rounded-full border-border bg-surface px-3 text-[12px]"
+              onClick={() => void bring(row.item.id, row.item.title)}
+            >
+              {t("today.bridgeAdd")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -448,15 +549,7 @@ function UnplacedSection({
               dateFormat={dateFormat}
               suggestedSettingId={
                 row.startTime
-                  ? periods.find((p) => {
-                      if (!p.startTime) return false;
-                      const start = timeToMinutes(p.startTime);
-                      const end = p.endTime
-                        ? timeToMinutes(p.endTime) + (p.endDayOffset ?? 0) * 1440
-                        : start + 90;
-                      const t = timeToMinutes(row.startTime ?? "");
-                      return t >= start && t < end;
-                    })?.settingId ?? null
+                  ? proposePeriodSettingId(periods, row.startTime)
                   : null
               }
             />
@@ -472,6 +565,3 @@ function UnplacedSection({
     </section>
   );
 }
-
-export { Plus, RefreshCw };
-void 0;

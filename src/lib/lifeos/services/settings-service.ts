@@ -1,6 +1,7 @@
 /* SettingsService — typed access to AppSetting rows (services-only DB access). */
 
 import { db, getSetting, setSetting } from "../db";
+import { emitChange } from "../events";
 import {
   DEFAULT_CALENDAR,
   DEFAULT_PRAYER,
@@ -59,6 +60,32 @@ export async function setPrayerSettings(
   settings: PrayerSettings
 ): Promise<void> {
   await setSetting(SETTING_KEYS.prayer, settings);
+}
+
+/* ---------- v1.5: the day's beginning + period names (onboarding) ---------- */
+
+export async function setDayStart(
+  dayStart: "fajr" | "midnight"
+): Promise<void> {
+  await setSetting(SETTING_KEYS.dayStart, dayStart);
+}
+
+export async function renamePeriodSetting(
+  id: string,
+  name: string
+): Promise<void> {
+  const clean = name.trim().slice(0, 80);
+  if (!clean) return;
+  await db.periodSettings.update(id, { name: clean });
+  emitChange(["periodSettings"]);
+}
+
+export async function setPeriodEnabled(
+  id: string,
+  enabled: boolean
+): Promise<void> {
+  await db.periodSettings.update(id, { enabled });
+  emitChange(["periodSettings"]);
 }
 
 export async function getView(

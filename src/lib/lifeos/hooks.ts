@@ -3,7 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import { db } from "./db";
-import { DEFAULT_PRAYER, SETTING_KEYS } from "./defaults";
+import { DEFAULT_FIRST_DAY, DEFAULT_PRAYER, SETTING_KEYS } from "./defaults";
 import type { PrayerSettings } from "./prayer";
 import {
   expand,
@@ -11,12 +11,13 @@ import {
   buildStatesByKey,
 } from "./services/recurrence-service";
 import { resolvePeriodsForDate } from "./services/planning-service";
+import { getWeekBridgeItems, type WeekBridgeRow } from "./services/planning-service";
 import { buildTodayData, type TodayData } from "./services/today-assembly";
 import { computeSuggestions, type ResumeTrigger } from "./services/resume-service";
 import { buildWeekInsights, type InsightsInput } from "./services/review-insights";
 import type { StripEntry } from "./services/week-strip";
 import { lifeDayFor } from "./day-boundary";
-import { addDays, localDayStartMs, todayLocal, weekStart } from "./dates";
+import { addDays, localDayStartMs, weekStart } from "./dates";
 import type {
   DailyEntry,
   DailyPeriod,
@@ -38,6 +39,8 @@ export interface ViewPrefs {
     timeFormat24: boolean;
   };
   prayer: PrayerSettings;
+  /** v1.5 — where the life-day flips */
+  dayStart: "fajr" | "midnight";
   todayView: "list" | "timeline";
   weeklyView: "list" | "timeline";
   inboxBadge: boolean;
@@ -47,7 +50,8 @@ export function useViewPrefs(): ViewPrefs | undefined {
   return useLiveQuery(async () => {
     const rows = await db.appSettings.toArray();
     const map = new Map(rows.map((r) => [r.key, r.value]));
-    const firstDay = (map.get(SETTING_KEYS.firstDayOfWeek) as number) ?? 6;
+    const firstDay =
+      (map.get(SETTING_KEYS.firstDayOfWeek) as number) ?? DEFAULT_FIRST_DAY;
     return {
       calendar: {
         firstDayOfWeek: firstDay % 7,
@@ -55,6 +59,8 @@ export function useViewPrefs(): ViewPrefs | undefined {
         timeFormat24: (map.get(SETTING_KEYS.timeFormat24) as boolean) ?? false,
       },
       prayer: (map.get(SETTING_KEYS.prayer) as PrayerSettings) ?? DEFAULT_PRAYER,
+      dayStart:
+        (map.get(SETTING_KEYS.dayStart) as "fajr" | "midnight") ?? "fajr",
       todayView: (map.get(SETTING_KEYS.todayView) as "list" | "timeline") ?? "list",
       weeklyView:
         (map.get(SETTING_KEYS.weeklyView) as "list" | "timeline") ?? "list",
@@ -196,7 +202,6 @@ export interface WeeklyData {
   unscheduled: WeeklyRow[];
   byDay: Map<string, WeeklyRow[]>;
   outcomes: WeeklyRow[];
-  hasIncompleteInPastWeek: boolean;
 }
 
 export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyData | undefined {
@@ -214,7 +219,6 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
   const items = useLiveQuery(() => db.items.toArray(), []);
   const rules = useLiveQuery(() => db.recurrenceRules.toArray(), []);
   const occStates = useLiveQuery(() => db.occurrenceStates.toArray(), []);
-  const today = todayLocal();
 
   return useMemo(() => {
     if (!entries || items === undefined || rules === undefined || occStates === undefined) {
@@ -283,10 +287,16 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
     const unscheduled: WeeklyRow[] = [];
     const outcomes: WeeklyRow[] = [];
     for (const row of rows) {
-      if (row.role === "outcome") outcomes.push(row);
+      // v1.5: a scheduled outcome used to appear TWICE — pinned above and in
+      // its day column. It stays pinned (with its day noted) and leaves the
+      // day column to the week's regular work.
+      if (row.role === "outcome") {
+        outcomes.push(row);
+        continue;
+      }
       if (row.scheduledDate && byDay.has(row.scheduledDate)) {
         byDay.get(row.scheduledDate)!.push(row);
-      } else if (row.role !== "outcome") {
+      } else {
         unscheduled.push(row);
       }
     }
@@ -295,11 +305,6 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
       list.sort((a, b) => (sortOrderOf(a) < sortOrderOf(b) ? -1 : 1));
     }
     unscheduled.sort((a, b) => (sortOrderOf(a) < sortOrderOf(b) ? -1 : 1));
-    const hasIncompleteInPastWeek =
-      weekEnd < today &&
-      rows.some(
-        (r) => r.item.status !== "completed" && r.item.status !== "cancelled"
-      );
     return {
       weekStart: weekStartStr,
       weekEnd,
@@ -309,9 +314,8 @@ export function useWeeklyData(weekStartDate: string, firstDay: number): WeeklyDa
       unscheduled,
       byDay,
       outcomes,
-      hasIncompleteInPastWeek,
     };
-  }, [weekStartDate, plan, entries, items, rules, occStates, firstDay, today]);
+  }, [weekStartDate, plan, entries, items, rules, occStates, firstDay]);
 }
 
 export function useInboxData() {
@@ -370,7 +374,12 @@ export function useSpaceData(spaceId: string) {
     const weekStartById = new Map(
       weeklyPlans.map((p) => [p.id, p.startDate])
     );
-    const thisWeekStart = weekStart(today, 6);
+    // v1.5: the space's "this week" chip follows the user's week-start
+    // setting — it used to be a hardcoded Saturday.
+    const thisWeekStart = weekStart(
+      today,
+      prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY
+    );
     const weekItemIds = new Set(
       weeklyEntries
         .filter(
@@ -464,6 +473,18 @@ export function usePeriodSettings(): PeriodSetting[] | undefined {
   return useLiveQuery(
     () => db.periodSettings.orderBy("order").toArray(),
     []
+  );
+}
+
+/** v1.5: the week → day bridge — what this date's week plan intends and the
+ *  day page doesn't have yet (TodayScreen renders it with gentle buttons). */
+export function useWeekBridge(
+  date: string,
+  firstDay: number
+): WeekBridgeRow[] | undefined {
+  return useLiveQuery(
+    () => getWeekBridgeItems(date, firstDay),
+    [date, firstDay]
   );
 }
 

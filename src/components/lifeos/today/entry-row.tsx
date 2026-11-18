@@ -106,13 +106,23 @@ export function TodayEntryRow({
     canSuggest && (!isOccurrenceVirtual || (!!rule && !!rule.periodSettingId));
   useEffect(() => {
     if (row.occurrenceKey && (isOccurrenceVirtual || materializedRecurring)) {
-      void db.recurrenceRules
-        .where("itemId")
-        .equals(row.item?.id ?? "___")
-        .first()
-        .then((r) => setRule(r ?? null));
+      // v1.5: routine occurrences look their rule up by routineId — the old
+      // itemId-only lookup came back empty, so "stop repeating" silently
+      // did nothing for them.
+      const lookup = row.item
+        ? db.recurrenceRules.where("itemId").equals(row.item.id).first()
+        : row.routine
+          ? db.recurrenceRules.where("routineId").equals(row.routine.id).first()
+          : Promise.resolve(null);
+      void lookup.then((r) => setRule(r ?? null));
     }
-  }, [row.occurrenceKey, row.item?.id, isOccurrenceVirtual, materializedRecurring]);
+  }, [
+    row.occurrenceKey,
+    row.item?.id,
+    row.routine?.id,
+    isOccurrenceVirtual,
+    materializedRecurring,
+  ]);
 
   const cycleStatus = async () => {
     const order = ["pending", "completed", "skipped", "partial"] as const;
@@ -190,6 +200,7 @@ export function TodayEntryRow({
           {liveHere ? (
             <Chip
               tone="sage"
+              asSpanButton
               title={t("entry.liveHereHint", {
                 name: periodName(suggested!.name),
               })}
@@ -207,6 +218,7 @@ export function TodayEntryRow({
           ) : daySuggestion ? (
             <Chip
               tone="terracotta"
+              asSpanButton
               title={t("entry.setPeriodHint")}
               onClick={async () => {
                 if (isOccurrenceVirtual && row.occurrence) {

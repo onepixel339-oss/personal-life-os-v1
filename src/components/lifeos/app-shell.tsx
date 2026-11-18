@@ -3,7 +3,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "next-themes";
 import {
   CalendarDays,
   Inbox,
@@ -11,22 +10,19 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  Sparkles,
   Sun,
   WifiOff,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { useInboxCount, useLifeToday, useSpaces, useTodayData, useUserName, useViewPrefs } from "@/lib/lifeos/hooks";
 import { useT, initI18n, rt, t, periodName } from "@/lib/lifeos/i18n";
 import { toArabicDigits } from "@/lib/lifeos/lang-state";
-import { timeToMinutes, nowMinutes, formatTime, weekStart } from "@/lib/lifeos/dates";
+import { nowMinutes, formatTime, weekStart, minutesToTime } from "@/lib/lifeos/dates";
 import { ensureSearchStarted } from "@/lib/lifeos/services/search-service";
+import { proposePeriodSettingId } from "@/lib/lifeos/services/planning-service";
 import { handleUndoShortcut } from "@/lib/lifeos/services/history-service";
-import { run } from "@/lib/lifeos/run";
-import { capture } from "@/lib/lifeos/services/inbox-service";
-import { SETTING_KEYS, DEFAULT_PRAYER } from "@/lib/lifeos/defaults";
+import { SETTING_KEYS, DEFAULT_PRAYER, DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import { db, getSetting, setSetting, pruneActivityHistory } from "@/lib/lifeos/db";
 import type { PrayerSettings } from "@/lib/lifeos/prayer";
 import { lifeDayFor } from "@/lib/lifeos/day-boundary";
@@ -58,10 +54,11 @@ import { ItemSheet } from "./itemsheet/item-sheet";
 import { RegistrationGate } from "./shared/registration-gate";
 import { LockScreen } from "./shared/lock-screen";
 import { InstallHintCard } from "./shared/install-hint";
-import { FridayAlarmCard } from "./shared/friday-alarm-card";
+import { FridayAlarmCard, shouldShowFridayAlarm } from "./shared/friday-alarm-card";
 import { TzHintCard } from "./shared/tz-hint";
 import { RamadanCard } from "./shared/ramadan-card";
 import { BackupNudgeCard } from "./shared/backup-nudge-card";
+import { OnboardingSheet } from "./shared/onboarding-sheet";
 import { ScreenErrorBoundary } from "./shared/error-boundary";
 import { cn } from "@/lib/utils";
 
@@ -95,7 +92,6 @@ export function AppShell() {
   const prefs = useViewPrefs();
   const [online, setOnline] = useState(true);
   const [welcome, setWelcome] = useState<boolean | null>(null);
-  const [makeItYoursOpen, setMakeItYoursOpen] = useState(false);
   const [installHint, setInstallHint] = useState(false);
   // v1.2 cards: Friday ritual, DST drift hint, Ramadan rhythm
   const [fridayAlarm, setFridayAlarm] = useState(false);
@@ -141,20 +137,27 @@ export function AppShell() {
     // v1.2: local-only error log (never any network)
     initErrorLogging();
     // v1.2: Friday-alarm card — shown once until done/dismissed.
-    // v1.3 graduation: only after a full week of life in here — a week
-    // since registration AND at least one closure. "كل حاجة في حينها".
-    void Promise.all([
-      getSetting<boolean>(SETTING_KEYS.fridayAlarmDismissed, false),
-      getSetting<boolean>(SETTING_KEYS.fridayAlarmDone, false),
-      getSetting<string | null>(SETTING_KEYS.registeredAt, null),
-      hasAnyClosure(),
-    ]).then(([dismissed, done, registeredAt, anyClosure]) => {
-      const weekPassed =
-        !!registeredAt &&
-        Number.isFinite(Date.parse(registeredAt)) &&
-        Date.now() - Date.parse(registeredAt) >= 7 * 86_400_000;
-      setFridayAlarm(!dismissed && !done && weekPassed && anyClosure);
-    });
+    // v1.5: from the FIRST Friday after registration — the old gate (a
+    // full week + a closure) hid the ritual when it mattered most.
+    void (async () => {
+      try {
+        const [dismissed, done, prayer, dayStart] = await Promise.all([
+          getSetting<boolean>(SETTING_KEYS.fridayAlarmDismissed, false),
+          getSetting<boolean>(SETTING_KEYS.fridayAlarmDone, false),
+          getSetting<PrayerSettings>(SETTING_KEYS.prayer, DEFAULT_PRAYER),
+          getSetting<"fajr" | "midnight">(SETTING_KEYS.dayStart, "fajr"),
+        ]);
+        setFridayAlarm(
+          shouldShowFridayAlarm({
+            dismissed,
+            done,
+            lifeToday: lifeDayFor({ prayer, dayStart }),
+          })
+        );
+      } catch {
+        /* quiet */
+      }
+    })();
     // v1.3: the weekly backup nudge — the one honest alarm. Not a streak,
     // not a scolding: a single line, at most once a week, only after a
     // lived week (≥1 قفلة) with a stale export. The phone is the only copy.
@@ -266,12 +269,14 @@ export function AppShell() {
     let alive = true;
     const sync = async () => {
       try {
-        const prefs = await getSetting<PrayerSettings>(
-          SETTING_KEYS.prayer,
-          DEFAULT_PRAYER
-        );
+        const [prayer, dayStart] = await Promise.all([
+          getSetting<PrayerSettings>(SETTING_KEYS.prayer, DEFAULT_PRAYER),
+          getSetting<"fajr" | "midnight">(SETTING_KEYS.dayStart, "fajr"),
+        ]);
         if (!alive) return;
-        useUIStore.getState().syncLifeDay(lifeDayFor({ prayer: prefs }));
+        useUIStore
+          .getState()
+          .syncLifeDay(lifeDayFor({ prayer, dayStart }));
       } catch {
         /* quiet */
       }
@@ -297,7 +302,7 @@ export function AppShell() {
     const s = useUIStore.getState();
     const today = s.lifeToday;
     const stillThisWeek =
-      s.weekStartDate === weekStart(today, 6) || // the seeded default
+      s.weekStartDate === weekStart(today, DEFAULT_FIRST_DAY) || // the seeded default
       s.weekStartDate === weekStart(today, firstDay);
     if (!stillThisWeek) return;
     const anchor = weekStart(today, firstDay);
@@ -468,7 +473,11 @@ export function AppShell() {
               which read as clutter, not welcome. */}
           {route.name === "today" ? (
             <div className="mx-auto mt-4 max-w-[720px] space-y-3">
-              {welcome ? <WelcomeCard onClose={() => setWelcome(false)} onOpenSetup={() => setMakeItYoursOpen(true)} /> : null}
+              {/* v1.5: the three-card onboarding replaced the single welcome
+                  card — existing users (welcomeDismissed) never see it. */}
+              {welcome ? (
+                <OnboardingSheet onDone={() => setWelcome(false)} />
+              ) : null}
               {installHint ? <InstallHintCard onDone={() => setInstallHint(false)} /> : null}
               {tzHint ? <TzHintCard onDone={() => setTzHint(false)} /> : null}
               {fridayAlarm ? <FridayAlarmCard onDone={() => setFridayAlarm(false)} /> : null}
@@ -541,7 +550,6 @@ export function AppShell() {
       <SearchDialog />
       <QuickAddSheet />
       <ItemSheet />
-      <MakeItYours open={makeItYoursOpen} onOpenChange={setMakeItYoursOpen} />
     </div>
   );
 }
@@ -631,13 +639,13 @@ function InboxBadge({ withLabel }: { withLabel?: boolean }) {
   return (
     <span
       className={cn(
-        "ms-auto inline-flex min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-medium",
-        "bg-primary-soft/70 text-primary-deep"
+        "ms-auto inline-flex min-w-[18px] items-center justify-center rounded-full px-1 font-medium",
+        "bg-primary-soft/70 text-primary-deep",
+        withLabel ? "text-[10.5px]" : "text-[10px]"
       )}
       aria-label={t("shell.inboxBadge", { count: shown })}
     >
       {shown}
-      {withLabel ? "" : ""}
     </span>
   );
 }
@@ -655,17 +663,21 @@ function ContextPanel() {
   const { t } = useT();
 
   const now = nowMinutes();
-  const currentPeriod =
+  // v1.5: one canonical "which period holds this moment" — the inline
+  // 90-minute fallback used to disagree with the service's 60-minute one.
+  const currentPeriodSetting =
     data === undefined
       ? null
-      : data.periods.find((p) => {
-          if (!p.startTime) return false;
-          const start = timeToMinutes(p.startTime);
-          const end = p.endTime
-            ? timeToMinutes(p.endTime) + (p.endDayOffset ?? 0) * 1440
-            : start + 90;
-          return now >= start && now < end;
-        }) ?? null;
+      : proposePeriodSettingId(
+          data.periods.map((p) => ({
+            ...p,
+            endTime: p.endTime ?? undefined,
+          })),
+          minutesToTime(now)
+        );
+  const currentPeriod = currentPeriodSetting
+    ? data!.periods.find((p) => p.settingId === currentPeriodSetting) ?? null
+    : null;
   const current = currentPeriod
     ? { name: currentPeriod.name, until: currentPeriod.endTime ?? null }
     : null;
@@ -789,205 +801,3 @@ function ContextPanel() {
     </div>
   );
 }
-
-/* ---------- first-launch welcome (F1) ---------- */
-
-function WelcomeCard({
-  onClose,
-  onOpenSetup,
-}: {
-  onClose: () => void;
-  onOpenSetup: () => void;
-}) {
-  const { t } = useT();
-  return (
-    <div className="mx-auto mt-6 max-w-[720px] rounded-2xl border border-primary-soft bg-surface-context px-5 py-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-serif text-[17px] text-ink">{t("shell.welcome.title")}</p>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
-            {t("shell.welcome.body")}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              className="h-9 rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
-              onClick={onOpenSetup}
-            >
-              <Sparkles className="h-4 w-4" /> {t("shell.welcome.makeItYours")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 rounded-full text-muted-foreground"
-              onClick={async () => {
-                await db.appSettings.put({
-                  key: SETTING_KEYS.welcomeDismissed,
-                  value: true,
-                  updatedAt: Date.now(),
-                });
-                onClose();
-              }}
-            >
-              {t("shell.welcome.start")}
-            </Button>
-          </div>
-        </div>
-        <button
-          type="button"
-          aria-label={t("shell.welcome.dismiss")}
-          onClick={async () => {
-            await db.appSettings.put({
-              key: SETTING_KEYS.welcomeDismissed,
-              value: true,
-              updatedAt: Date.now(),
-            });
-            onClose();
-          }}
-          className="rounded-full p-1 text-muted-foreground/70 hover:text-ink-soft"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- optional "Make it yours" sheet (F1) ---------- */
-
-function MakeItYours({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { theme, setTheme } = useTheme();
-  const prefs = useViewPrefs();
-  const { t } = useT();
-  const [firstDay, setFirstDay] = useState<string>("6");
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  useEffect(() => {
-    if (open && prefs) setFirstDay(String(prefs.calendar.firstDayOfWeek));
-  }, [open, prefs]);
-  const days = [
-    { v: "0", label: t("miy.sunday") },
-    { v: "1", label: t("miy.monday") },
-    { v: "6", label: t("miy.saturday") },
-  ];
-  return (
-    <div
-      className={cn(
-        "fixed inset-0 z-[60] flex items-end justify-center bg-[rgba(42,31,23,0.35)] backdrop-blur-sm transition-opacity sm:items-center",
-        open ? "opacity-100" : "pointer-events-none opacity-0"
-      )}
-      onClick={() => onOpenChange(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Make it yours"
-      aria-hidden={!open}
-      {...(open ? {} : { inert: true as never })}
-    >
-      <div
-        className={cn(
-          "w-full max-w-md rounded-t-2xl border border-border bg-surface-raised px-5 pb-6 pt-5 shadow-[var(--shadow-warm)] transition-transform sm:rounded-2xl",
-          open ? "translate-y-0" : "translate-y-8"
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <p className="font-serif text-[19px] text-ink">{t("miy.title")}</p>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          {t("miy.subtitle")}
-        </p>
-        <div className="mt-4 space-y-4">
-          <div>
-            <p className="text-[12px] font-medium text-ink-soft">{t("miy.appearance")}</p>
-            <div className="mt-1.5 flex gap-1.5">
-              {(
-                [
-                  { key: "light", label: t("miy.light") },
-                  { key: "dark", label: t("miy.dark") },
-                  { key: "system", label: t("miy.system") },
-                ] as const
-              ).map((o) => (
-                <button
-                  key={o.key}
-                  type="button"
-                  onClick={() => setTheme(o.key)}
-                  className={cn(
-                    "h-10 flex-1 rounded-xl border text-[13px] font-medium transition-colors",
-                    mounted && theme === o.key
-                      ? "border-primary-soft bg-primary-soft/40 text-primary-deep"
-                      : "border-border bg-surface text-ink-soft"
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-[12px] font-medium text-ink-soft">{t("miy.weekStarts")}</p>
-            <div className="mt-1.5 flex gap-1.5">
-              {days.map((d) => (
-                <button
-                  key={d.v}
-                  type="button"
-                  onClick={() => setFirstDay(d.v)}
-                  className={cn(
-                    "h-10 flex-1 rounded-xl border text-[13px] font-medium transition-colors",
-                    firstDay === d.v
-                      ? "border-primary-soft bg-primary-soft/40 text-primary-deep"
-                      : "border-border bg-surface text-ink-soft"
-                  )}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="mt-5 flex justify-between">
-          <Button
-            variant="ghost"
-            className="rounded-full text-muted-foreground"
-            onClick={() => onOpenChange(false)}
-          >
-            {t("miy.skip")}
-          </Button>
-          <Button
-            className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
-            onClick={async () => {
-              const { setCalendarSettings } = await import(
-                "@/lib/lifeos/services/settings-service"
-              );
-              await setCalendarSettings({
-                firstDayOfWeek: Number(firstDay) as 0 | 1 | 2 | 3 | 4 | 5 | 6,
-              });
-              await db.appSettings.put({
-                key: SETTING_KEYS.makeItYoursDone,
-                value: true,
-                updatedAt: Date.now(),
-              });
-              await db.appSettings.put({
-                key: SETTING_KEYS.welcomeDismissed,
-                value: true,
-                updatedAt: Date.now(),
-              });
-              onOpenChange(false);
-              const { toast } = await import("sonner");
-              toast(t("miy.toast"));
-            }}
-          >
-            {t("miy.done")}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export { capture, run };

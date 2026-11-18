@@ -7,9 +7,9 @@ import { db, logActivity } from "../db";
 import { emitChange } from "../events";
 import { keyAfter, keyBetween } from "../fractional";
 import { uid } from "../ids";
-import { isValidTimeString, timeToMinutes, todayLocal } from "../dates";
+import { isValidTimeString, timeToMinutes, todayLocal, weekStart } from "../dates";
 import { resolvePrayerTimes, type PrayerSettings } from "../prayer";
-import type { Anchor, DailyEntry, DailyPeriod, DailyPlan, ExecutionStatus, PeriodSetting, ResolvedPeriod, Result, WeeklyEntry, WeeklyPlan } from "../types";
+import type { Anchor, DailyEntry, DailyPeriod, DailyPlan, ExecutionStatus, Item, PeriodSetting, ResolvedPeriod, Result, WeeklyEntry, WeeklyPlan } from "../types";
 import { err, ok } from "../types";
 import type { Undoable } from "./history-service";
 import { DEFAULT_PRAYER } from "../defaults";
@@ -228,10 +228,35 @@ export interface AddDailyEntryInput {
   routineId?: string;
   occurrenceKey?: string;
   periodId?: string;
+  /** v1.5: the stable way to place — resolved onto the day's period snapshot
+   *  (virtual ids on a fresh day are remapped, stale ids never dangle). */
+  periodSettingId?: string;
   startTime?: string;
   endTime?: string;
   durationMinutes?: number;
-  allowMultiple?: boolean; // set after the gentle "add another session?" confirm
+  allowMultiple?: boolean; // explicit multi-session adds (entertainment…)
+}
+
+/** Map a period reference onto THIS day's real period snapshot ids.
+ *  Virtual ids (fresh day) are remapped by setting id; a raw id that belongs
+ *  to no period of this day is dropped rather than stored dangling. */
+function resolvePeriodId(
+  input: Pick<AddDailyEntryInput, "periodId" | "periodSettingId">,
+  periods: DailyPeriod[]
+): string | undefined {
+  let periodId = input.periodId;
+  if (input.periodSettingId) {
+    const bySetting = periods.find(
+      (p) => p.settingId === input.periodSettingId
+    )?.id;
+    if (bySetting) periodId = bySetting;
+  }
+  if (!periodId) return undefined;
+  if (periodId.startsWith("virtual:")) {
+    const sid = periodId.slice("virtual:".length);
+    return periods.find((p) => p.settingId === sid)?.id;
+  }
+  return periods.some((p) => p.id === periodId) ? periodId : undefined;
 }
 
 function validateEntryTimes(input: AddDailyEntryInput): string | null {
@@ -249,11 +274,9 @@ function validateEntryTimes(input: AddDailyEntryInput): string | null {
   return null;
 }
 
-const SESSION_TYPES = new Set(["activity", "entertainment"]);
-
 export async function addEntryToDay(
   input: AddDailyEntryInput
-): Promise<Result<DailyEntry & Undoable>> {
+): Promise<Result<DailyEntry & Undoable & { alreadyPlaced?: boolean }>> {
   if (input.kind === "item" && !input.itemId)
     return err({ code: "validation", message: "An item is needed." });
   if (input.kind === "routine" && !input.routineId)
@@ -265,37 +288,58 @@ export async function addEntryToDay(
   try {
     const created = await db.transaction(
       "rw",
-      [db.dailyPlans, db.dailyPeriods, db.dailyEntries, db.periodSettings, db.appSettings, db.items, db.activityHistory],
+      [db.dailyPlans, db.dailyPeriods, db.dailyEntries, db.periodSettings, db.appSettings, db.items, db.routines, db.activityHistory],
       async () => {
         const { plan, periods } = await ensurePlanTx(input.date);
-        // duplicate prevention (D17)
-        if (input.itemId) {
-          const existing = await db.dailyEntries
-            .where("dailyPlanId")
-            .equals(plan.id)
-            .filter((e) => e.itemId === input.itemId)
-            .toArray();
+        const periodId = resolvePeriodId(input, periods);
+        // duplicate prevention (D17) — items and routines, one gentle rule:
+        // re-adding with a period in hand HONORS the placement (the entry
+        // moves there) instead of bouncing the user off with an error.
+        if (input.itemId || input.routineId) {
+          const existing = (
+            await db.dailyEntries
+              .where("dailyPlanId")
+              .equals(plan.id)
+              .toArray()
+          ).filter(
+            (e) =>
+              (input.itemId ? e.itemId === input.itemId : false) ||
+              (input.routineId ? e.routineId === input.routineId : false)
+          );
           const sameOccurrence = existing.filter(
             (e) => (e.occurrenceKey ?? "") === (input.occurrenceKey ?? "")
           );
           if (sameOccurrence.length && !input.allowMultiple) {
-            const item = await db.items.get(input.itemId);
-            if (item && SESSION_TYPES.has(item.type)) {
+            // v1.5 (review N2): the user's period AND time both land — a
+            // fresh choice is honored, never silently dropped.
+            if (periodId || input.startTime) {
+              const existingEntry = sameOccurrence[0];
+              const prevPeriodId = existingEntry.periodId;
+              const prevStartTime = existingEntry.startTime;
+              const patch: Partial<DailyEntry> = { updatedAt: Date.now() };
+              if (periodId) patch.periodId = periodId;
+              if (input.startTime) patch.startTime = input.startTime;
+              await db.dailyEntries.update(existingEntry.id, patch);
               return {
-                duplicateSession: true as const,
-                message: `“${item.title}” is already on this page. Add another session?`,
+                entry: { ...existingEntry, ...patch },
+                alreadyPlaced: true as const,
+                prevPeriodId,
+                prevStartTime,
               };
             }
+            const title = input.itemId
+              ? (await db.items.get(input.itemId))?.title ?? "This item"
+              : (await db.routines.get(input.routineId!))?.name ?? "This routine";
             return {
               duplicate: true as const,
-              message: `“${item?.title ?? "This item"}” is already on this day.`,
+              message: `“${title}” is already on this day.`,
             };
           }
         }
         const siblings = await db.dailyEntries
           .where("dailyPlanId")
           .equals(plan.id)
-          .filter((e) => (e.periodId ?? "") === (input.periodId ?? ""))
+          .filter((e) => (e.periodId ?? "") === (periodId ?? ""))
           .toArray();
         const now = Date.now();
         const entry: DailyEntry = {
@@ -305,7 +349,7 @@ export async function addEntryToDay(
           itemId: input.itemId,
           routineId: input.routineId,
           occurrenceKey: input.occurrenceKey,
-          periodId: input.periodId,
+          periodId,
           startTime: input.startTime,
           endTime: input.endTime,
           durationMinutes: input.durationMinutes,
@@ -318,16 +362,34 @@ export async function addEntryToDay(
         // must be awaited: an un-awaited write inside a transaction can be
         // dropped when the transaction commits first (real IndexedDB)
         await logActivity("dailyEntry", entry.id, "add", { date: input.date });
-        void periods;
         return { entry };
       }
     );
     if ("duplicate" in created && created.duplicate)
       return err({ code: "duplicate", message: created.message });
-    if ("duplicateSession" in created && created.duplicateSession)
-      return err({ code: "duplicate", message: created.message });
     const entry = created.entry;
     emitChange(["dailyEntries", "dailyPlans"]);
+    if ("alreadyPlaced" in created && created.alreadyPlaced) {
+      // v1.5: the entry existed; the user's fresh period/time choice just
+      // moved it — undo returns it to exactly where it was, never deletes.
+      const prevPeriodId = created.prevPeriodId;
+      const prevStartTime = created.prevStartTime;
+      return ok({
+        ...entry,
+        alreadyPlaced: true,
+        undo: {
+          label: "Back to its place on the day",
+          undo: async () => {
+            await db.dailyEntries.update(entry.id, {
+              periodId: prevPeriodId,
+              startTime: prevStartTime,
+              updatedAt: Date.now(),
+            });
+            emitChange(["dailyEntries"]);
+          },
+        },
+      });
+    }
     return ok({
       ...entry,
       undo: {
@@ -439,10 +501,26 @@ export async function moveEntryToDay(
       "rw",
       [db.dailyPlans, db.dailyPeriods, db.dailyEntries, db.periodSettings, db.appSettings],
       async () => {
-        const { plan } = await ensurePlanTx(targetDate);
+        const { plan, periods } = await ensurePlanTx(targetDate);
+        // v1.5: the period follows the move — same time of day, new day's
+        // snapshot. It used to be wiped silently; now only a period that has
+        // no twin on the target day lets go.
+        let nextPeriodId: string | undefined;
+        if (entry.periodId) {
+          const oldPeriods = await db.dailyPeriods
+            .where("dailyPlanId")
+            .equals(entry.dailyPlanId)
+            .toArray();
+          const settingId = oldPeriods.find(
+            (p) => p.id === entry.periodId
+          )?.settingId;
+          nextPeriodId = settingId
+            ? periods.find((p) => p.settingId === settingId)?.id
+            : undefined;
+        }
         await db.dailyEntries.update(entryId, {
           dailyPlanId: plan.id,
-          periodId: undefined,
+          periodId: nextPeriodId,
           updatedAt: Date.now(),
         });
       }
@@ -725,4 +803,53 @@ export async function removeEntryFromWeek(
 
 export async function getTodayStr(): Promise<string> {
   return todayLocal();
+}
+
+/* ---------- v1.5: the week → day bridge (P4 intact) ---------- */
+
+export interface WeekBridgeRow {
+  entry: WeeklyEntry;
+  item: Item;
+}
+
+/** What the current week's plan assigned to THIS date, still not on the
+ *  day's page. This is the honest bridge the weekly view always lacked:
+ *  nothing ever moves by itself — the Today page simply shows what the
+ *  week intends for this date, and one gentle button per row brings it over
+ *  (a manual placement, exactly like any other). */
+export async function getWeekBridgeItems(
+  date: string,
+  firstDay: number
+): Promise<WeekBridgeRow[]> {
+  const ws = weekStart(date, firstDay);
+  const plan = await db.weeklyPlans.where("startDate").equals(ws).first();
+  if (!plan) return [];
+  const entries = (
+    await db.weeklyEntries.where("weeklyPlanId").equals(plan.id).toArray()
+  )
+    .filter((e) => e.scheduledDate === date)
+    .sort((a, b) => (a.sortOrder < b.sortOrder ? -1 : 1));
+  const dayPlan = await db.dailyPlans.where("date").equals(date).first();
+  const onDay = new Set<string>();
+  if (dayPlan) {
+    const dayEntries = await db.dailyEntries
+      .where("dailyPlanId")
+      .equals(dayPlan.id)
+      .toArray();
+    for (const e of dayEntries) if (e.itemId) onDay.add(e.itemId);
+  }
+  const out: WeekBridgeRow[] = [];
+  for (const e of entries) {
+    if (!e.itemId || onDay.has(e.itemId)) continue;
+    const item = await db.items.get(e.itemId);
+    if (!item) continue;
+    if (
+      item.status === "completed" ||
+      item.status === "cancelled" ||
+      item.status === "archived"
+    )
+      continue;
+    out.push({ entry: e, item });
+  }
+  return out;
 }

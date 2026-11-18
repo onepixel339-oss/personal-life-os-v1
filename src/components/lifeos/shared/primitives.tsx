@@ -210,12 +210,16 @@ export function Chip({
   className,
   onClick,
   title,
+  asSpanButton,
 }: {
   children: React.ReactNode;
   tone?: "neutral" | "terracotta" | "sage" | "muted" | "lavender";
   className?: string;
   onClick?: () => void;
   title?: string;
+  /** v1.5: render as <span role="button"> — required wherever the chip sits
+   *  inside another button (invalid HTML + hydration warnings otherwise). */
+  asSpanButton?: boolean;
 }) {
   const tones: Record<string, string> = {
     neutral: "border-border bg-surface text-ink-soft",
@@ -224,15 +228,39 @@ export function Chip({
     muted: "border-border bg-transparent text-muted-foreground",
     lavender: "border-lavender-soft bg-lavender-soft/60 text-ink-soft",
   };
-  const Comp = onClick ? "button" : "span";
+  const interactive = !!onClick;
+  const spanInteractive = interactive && asSpanButton;
+  const Comp = spanInteractive ? "span" : interactive ? "button" : "span";
   return (
     <Comp
       title={title}
-      onClick={onClick}
+      onClick={
+        interactive
+          ? (e: React.MouseEvent) => {
+              // v1.5.1 (review M5): interactive chips often sit inside a
+              // larger clickable row — the chip's action must not also fire
+              // the row's. Non-interactive chips never block the row.
+              e.stopPropagation();
+              onClick?.();
+            }
+          : undefined
+      }
+      {...(spanInteractive
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            },
+          }
+        : {})}
       className={cn(
         "inline-flex max-w-full items-center gap-1 truncate rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium",
         tones[tone],
-        onClick && "transition-colors hover:border-border-strong",
+        interactive && "transition-colors hover:border-border-strong",
         className
       )}
     >

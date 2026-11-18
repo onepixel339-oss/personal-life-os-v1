@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
-import { addDays, formatDate, formatTime, isValidDateString, todayLocal } from "@/lib/lifeos/dates";
+import { addDays, formatDate, isValidDateString, todayLocal } from "@/lib/lifeos/dates";
 import type { Item, PeriodSetting } from "@/lib/lifeos/types";
 import { typeLabel, periodName, t } from "@/lib/lifeos/i18n";
 import { EmptyState } from "./primitives";
@@ -502,4 +502,3 @@ export function DeleteItemDialog({
   );
 }
 
-export { formatTime };

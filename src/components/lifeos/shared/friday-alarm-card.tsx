@@ -14,6 +14,8 @@ import { SETTING_KEYS } from "@/lib/lifeos/defaults";
 import { isRamadan } from "@/lib/lifeos/ramadan";
 import { toast } from "sonner";
 
+export { shouldShowFridayAlarm } from "@/lib/lifeos/friday";
+
 export function FridayAlarmCard({ onDone }: { onDone: () => void }) {
   const { t } = useT();
   const [ramadan] = useState(() => isRamadan());

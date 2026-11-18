@@ -40,7 +40,9 @@ import { createMedia } from "@/lib/lifeos/services/entertainment-service";
 import { createRule } from "@/lib/lifeos/services/recurrence-service";
 import { deleteItemPermanently } from "@/lib/lifeos/services/item-service";
 import { toastWithUndo } from "@/lib/lifeos/run";
+import { pushUndo } from "@/lib/lifeos/services/history-service";
 import { useViewPrefs } from "@/lib/lifeos/hooks";
+import { DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import { cn } from "@/lib/utils";
 
 const TYPE_CHIPS: ItemType[] = [
@@ -128,6 +130,10 @@ export function QuickAddSheet() {
     if (!week) return [];
     return Array.from({ length: 7 }, (_, i) => addDays(week, i));
   }, [week]);
+  // v1.5.1 (review N8): notes and entertainment never carry rules — the
+  // repeat select hides for them, so none of its companions can be dropped.
+  const repeatPossible = type !== "note" && type !== "entertainment";
+  const repeatActive = repeat !== "none" && repeatPossible;
 
   const save = async (keepOpen: boolean) => {
     const trimmed = title.trim();
@@ -136,7 +142,30 @@ export function QuickAddSheet() {
     try {
       let itemId: string | null = null;
       let placementLabel = "";
-      if (context.source === "inbox" || context.source === "global") {
+      // Recurrence decision — computed ONCE, before anything else: when a
+      // rule will exist, the rule itself carries the period and the time
+      // (and generates today's occurrence), so no manual one-off placement
+      // is created beside it.
+      const patternMap: Record<string, RecurrencePattern> = {
+        daily: "daily",
+        weekdays: "weekdays",
+        weekly: "weekly",
+        monthly: "monthly",
+      };
+      const repeatPattern = patternMap[repeat] as RecurrencePattern | undefined;
+      const willRepeat =
+        !!repeatPattern &&
+        repeat !== "none" &&
+        type !== "note" &&
+        type !== "entertainment";
+      // v1.5: a day the user actually picked means "put it there" — in ANY
+      // context. The date/period/time trio used to be silently ignored in
+      // the global/inbox/space contexts unless a repeat was also chosen.
+      const wantsDayPlacement = !!today && !willRepeat;
+      const inboxFlow =
+        (context.source === "inbox" || context.source === "global") &&
+        !wantsDayPlacement;
+      if (inboxFlow) {
         if (type === "unsorted" && !expanded) {
           const res = await capture(trimmed, description || undefined);
           if (!res.ok) return;
@@ -192,43 +221,20 @@ export function QuickAddSheet() {
       }
       if (!itemId) return;
       const finalItemId = itemId;
-      // Recurrence decision — computed ONCE and shared by placement and rule
-      // creation: when a rule will exist, the rule itself carries the period
-      // and the time (and generates today's occurrence), so we must NOT also
-      // create a manual one-off placement — that duplicate row was the single
-      // most confusing moment of the first session.
-      const patternMap: Record<string, RecurrencePattern> = {
-        daily: "daily",
-        weekdays: "weekdays",
-        weekly: "weekly",
-        monthly: "monthly",
-      };
-      const repeatPattern = patternMap[repeat] as RecurrencePattern | undefined;
-      const willRepeat =
-        !!repeatPattern &&
-        repeat !== "none" &&
-        type !== "note" &&
-        type !== "entertainment";
-      // context placement
-      if (context.source === "today" && today && !willRepeat) {
+      // context placement — v1.5: one gate, any source: a picked day places.
+      if (wantsDayPlacement) {
         const addRes = await run(
           addEntryToDay({
             date: today,
             kind: "item",
             itemId: finalItemId,
             startTime: time || undefined,
+            periodSettingId: period !== "none" ? period : undefined,
           }),
           { quiet: true }
         );
-        if (addRes.ok && period !== "none") {
-          const { setEntryPeriodBySetting } = await import(
-            "@/lib/lifeos/services/planning-service"
-          );
-          await run(setEntryPeriodBySetting(addRes.value.id, period), { quiet: true });
-        }
-        placementLabel = t("qa.addedToday");
-      }
-      if (context.source === "weekly" && week && !willRepeat) {
+        if (addRes.ok) placementLabel = t("qa.addedToday");
+      } else if (context.source === "weekly" && week && !willRepeat) {
         await run(
           addEntryToWeek({
             weekStartDate: week,
@@ -256,23 +262,22 @@ export function QuickAddSheet() {
             startDate: today || todayLocal(),
             startTime: time || undefined,
             periodSettingId: period !== "none" ? period : undefined,
-            weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? 6) as 0 | 1 | 2 | 3 | 4 | 5 | 6),
+            weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY) as 0 | 1 | 2 | 3 | 4 | 5 | 6),
           }),
           { quiet: true }
         );
       }
-      toastWithUndo({
-        label: `${placementLabel} — “${trimmed}”`,
+      // v1.5: ONE undo command, registered once for the toast button and
+      // once for ⌘Z — the same object, so the toast's action also removes it
+      // from the history stack (it used to push two copies and ⌘Z fired twice).
+      const undoCmd = {
+        label: `${placementLabel || t("qa.saved")} — “${trimmed}”`,
         undo: async () => {
           await deleteItemPermanently(finalItemId);
         },
-      });
-      (await import("@/lib/lifeos/services/history-service")).pushUndo({
-        label: `${placementLabel} — “${trimmed}”`,
-        undo: async () => {
-          await deleteItemPermanently(finalItemId);
-        },
-      });
+      };
+      pushUndo(undoCmd);
+      toastWithUndo(undoCmd);
       if (keepOpen) {
         setTitle("");
         setDescription("");
@@ -405,46 +410,55 @@ export function QuickAddSheet() {
                     className="w-36 rounded-xl border-border bg-surface"
                   />
                 </label>
-                <label className="flex items-center justify-between gap-2">
-                  <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.period")}</span>
-                  <Select value={period} onValueChange={setPeriod}>
-                    <SelectTrigger className="w-36 rounded-xl border-border bg-surface">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl border-border bg-surface-raised">
-                      <SelectItem value="none">{t("dialog.noPeriod")}</SelectItem>
-                      {(periodSettings ?? []).map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {periodName(p.name)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label className="flex items-center justify-between gap-2">
-                  <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.time")}</span>
-                  <Input
-                    type="time"
-                    value={time}
-                    onChange={(e) => setTime(e.target.value)}
-                    className="w-36 rounded-xl border-border bg-surface"
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-2">
-                  <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.repeat")}</span>
-                  <Select value={repeat} onValueChange={setRepeat}>
-                    <SelectTrigger className="w-36 rounded-xl border-border bg-surface">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl border-border bg-surface-raised">
-                      <SelectItem value="none">{t("qa.noRepeat")}</SelectItem>
-                      <SelectItem value="daily">{t("notes.everyDay")}</SelectItem>
-                      <SelectItem value="weekdays">{t("qa.weekdays")}</SelectItem>
-                      <SelectItem value="weekly">{t("qa.weekly")}</SelectItem>
-                      <SelectItem value="monthly">{t("qa.monthly")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
+                {/* v1.5: period + time only make sense once a day is picked
+                    (or a repeat carries them) — hidden before that, so no
+                    choice can be silently dropped. */}
+                {today || repeatActive ? (
+                  <>
+                    <label className="flex items-center justify-between gap-2">
+                      <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.period")}</span>
+                      <Select value={period} onValueChange={setPeriod}>
+                        <SelectTrigger className="w-36 rounded-xl border-border bg-surface">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl border-border bg-surface-raised">
+                          <SelectItem value="none">{t("dialog.noPeriod")}</SelectItem>
+                          {(periodSettings ?? []).map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {periodName(p.name)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </label>
+                    <label className="flex items-center justify-between gap-2">
+                      <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.time")}</span>
+                      <Input
+                        type="time"
+                        value={time}
+                        onChange={(e) => setTime(e.target.value)}
+                        className="w-36 rounded-xl border-border bg-surface"
+                      />
+                    </label>
+                  </>
+                ) : null}
+                {repeatPossible ? (
+                  <label className="flex items-center justify-between gap-2">
+                    <span className="text-[12.5px] font-medium text-ink-soft">{t("qa.repeat")}</span>
+                    <Select value={repeat} onValueChange={setRepeat}>
+                      <SelectTrigger className="w-36 rounded-xl border-border bg-surface">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl border-border bg-surface-raised">
+                        <SelectItem value="none">{t("qa.noRepeat")}</SelectItem>
+                        <SelectItem value="daily">{t("notes.everyDay")}</SelectItem>
+                        <SelectItem value="weekdays">{t("qa.weekdays")}</SelectItem>
+                        <SelectItem value="weekly">{t("qa.weekly")}</SelectItem>
+                        <SelectItem value="monthly">{t("qa.monthly")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </label>
+                ) : null}
               </div>
               {week || context.source === "weekly" ? (
                 <label className="flex items-center justify-between gap-3">

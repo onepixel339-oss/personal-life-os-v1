@@ -39,11 +39,6 @@ export const en: Record<string, string> = {
   "shell.noSpaces": "No spaces yet.",
   "shell.allSpaces": "all spaces →",
   "shell.panelNote": "A calm companion — this panel never nags, never scores, never sends anything anywhere.",
-  "shell.welcome.title": "Welcome to your daybook",
-  "shell.welcome.body": "Five periods shape each day around prayer times — gentle structure, never a schedule. Capture anything with Quick Add; nothing here is a commitment, and nothing moves unless you move it.",
-  "shell.welcome.makeItYours": "Make it yours",
-  "shell.welcome.start": "Start right away",
-  "shell.welcome.dismiss": "Dismiss welcome",
   "shell.undone": "Undone — {label}",
   "shell.inboxBadge": "{count} in inbox",
   "shell.crashTitle": "Something stumbled here",
@@ -68,8 +63,6 @@ export const en: Record<string, string> = {
   "nav.primary": "Primary",
 
   /* make it yours */
-  "miy.title": "Make it yours",
-  "miy.subtitle": "Optional — you can change any of this later in Settings.",
   "miy.appearance": "Appearance",
   "miy.weekStarts": "Week starts on",
   "miy.light": "Light",
@@ -78,9 +71,7 @@ export const en: Record<string, string> = {
   "miy.sunday": "Sunday",
   "miy.monday": "Monday",
   "miy.saturday": "Saturday",
-  "miy.skip": "Skip",
   "miy.done": "Done",
-  "miy.toast": "Made yours — change anything later in Settings",
 
   /* registration (name only) */
   "register.kicker": "Personal Life OS",
@@ -447,7 +438,7 @@ export const en: Record<string, string> = {
   "data.errorLogCopied": "Log copied",
   "data.errorLogClear": "Clear",
 
-  "about.version": "Version 1.4.0 · schema 1 · Your day's quiet companion.",
+  "about.version": "Version 1.5.0 · schema 1 · Your day's quiet companion.",
   "about.body": "A calm, flexible personal environment: daily planning, weekly focus, spaces for memory, notes, entertainment and routines — offline, private, no accounts.",
   "about.bullet1": "All data stays in this browser's IndexedDB",
   "about.bullet2": "No analytics, no network calls",
@@ -586,7 +577,7 @@ export const en: Record<string, string> = {
   "weekly.addToDay": "Add to a day (separate step)",
   "weekly.addToAnotherWeek": "Add to another week",
   "weekly.passedChoice": "This week passed — your choice",
-  "weekly.keepWhere": "Keep where it is",
+  "weekly.keepWhere": "Leave it where it is",
   "weekly.returnToInbox": "Return to Inbox",
   "weekly.backInInboxToast": "Back in Inbox — the week keeps its history",
   "weekly.postponedToast": "Postponed — nothing moved",
@@ -964,6 +955,59 @@ export const en: Record<string, string> = {
   "item.comeBackOn": "Come back to it on (optional)",
   "item.willSurfaceToast": "Will surface on {date}",
   "item.postponedGentlyToast": "Postponed gently",
+
+  /* ---- v1.5: the week → day bridge, routine repeats, space identity,
+         coach lines, and the three-card onboarding ---- */
+  "today.bridgeTitle": "From your week's plan",
+  "today.bridgeHint": "What this day was given in the week — bring what you want, leave the rest.",
+  "today.bridgeAdd": "bring it",
+  "today.bridgeAddAll": "bring all of it",
+  "today.bridgeBroughtToast": "“{title}” is on its day",
+  "today.bridgeAllBroughtToast": "All of it is on its day now",
+  "weekly.routinesTitle": "Your routines",
+  "weekly.routinesHint": "they live on their days — a quiet overview",
+  "weekly.routineSteps": "{count} steps",
+  "routines.repeatTitle": "This routine repeats",
+  "routines.repeatDesc": "“{name}” shows up on its days by itself — no daily arranging.",
+  "routines.repeatSavedToast": "The routine now repeats",
+  "routines.addRepeatShort": "it repeats",
+  "routines.repeatChipHint": "Tap to choose its rhythm",
+  "routines.repeatNote": "Optional: a period and a time put every occurrence in its place by itself.",
+  "routines.firstHint": "A routine is steps you walk through in order — once a day, no streaks.",
+  "item.nowEntertainmentToast": "Now entertainment — edit its details from its page",
+  "spaces.iconLabel": "Icon",
+  "spaces.colorLabel": "Color",
+  "spaces.pickIconAria": "Pick an icon",
+  "spaces.pickColorAria": "Pick a color",
+  "coach.dismiss": "Hide this line",
+  "coach.today": "Today is where things happen — periods hang on the prayers, the day closes gently at the end, and what your week gave this day waits up top.",
+  "coach.weekly": "The week is intention, not commitment — give something a day, and when its day comes you'll find it waiting on the Today page.",
+  "coach.spaces": "Spaces are your memory — one thing can appear in more than one place without ever being copied.",
+  "coach.inbox": "The Inbox is a passing phase — sort what's inside or give it a day, and let it stay as empty as you can.",
+  "coach.routines": "A routine is steps you run through in order — once a day, and you may stop at any moment.",
+  "onboarding.title": "Three light touches, then begin",
+  "onboarding.step1Title": "Your beginning",
+  "onboarding.step1Subtitle": "The look, the week, and where your day flips — all changeable later in Settings.",
+  "onboarding.dayStarts": "Your day begins at",
+  "onboarding.dayStartFajr": "Fajr",
+  "onboarding.dayStartMidnight": "Midnight",
+  "onboarding.dayStartFajrNote": "The night belongs to the day before it — a 2 AM capture counts for yesterday.",
+  "onboarding.dayStartMidnightNote": "The day flips exactly at 12.",
+  "onboarding.step2Title": "Your day's periods",
+  "onboarding.step2Subtitle": "Five are ready — name them in your own words, or keep them as they are.",
+  "onboarding.step2Note": "Changes save instantly; the full editor lives in Settings › Periods.",
+  "onboarding.periodNameAria": "Period name",
+  "onboarding.periodToggleAria": "Show or hide {name}",
+  "onboarding.step3Title": "One first thing",
+  "onboarding.step3Subtitle": "Something on your mind? Catch it — the first habit, born on day one.",
+  "onboarding.firstThingPlaceholder": "e.g. sort the desk drawer…",
+  "onboarding.captureIt": "catch it",
+  "onboarding.step3Note": "It lands in the Inbox — sort it or give it a day whenever you're ready.",
+  "onboarding.next": "Next",
+  "onboarding.back": "Back",
+  "onboarding.skipAll": "Skip all of it",
+  "onboarding.doneToast": "Here we go — your day is waiting",
+  "onboarding.doneCapturedToast": "Caught — it's in the Inbox, and your day is waiting",
 };
 
 export const ar: Record<string, string> = {
@@ -984,11 +1028,6 @@ export const ar: Record<string, string> = {
   "shell.noSpaces": "لا مساحات بعد.",
   "shell.allSpaces": "كل المساحات ←",
   "shell.panelNote": "رفيق هادئ — هذه اللوحة لا تُلحّ ولا تُقيّم ولا تُرسل شيئاً إلى أي مكان.",
-  "shell.welcome.title": "أهلاً بك في يومياتك",
-  "shell.welcome.body": "خمس فترات تشكّل كل يوم حول أوقات الصلاة — هيكل لطيف، لا جدولاً. التقط أي شيء بالإضافة السريعة؛ لا شيء هنا التزام، ولا شيء يتحرك إلا إذا حرّكته.",
-  "shell.welcome.makeItYours": "اجعلها لك",
-  "shell.welcome.start": "ابدأ فوراً",
-  "shell.welcome.dismiss": "إخفاء الترحيب",
   "shell.undone": "تم التراجع — {label}",
   "shell.inboxBadge": "{count} في الوارد",
   "shell.crashTitle": "حاجة هنا تعثّرت",
@@ -1013,8 +1052,6 @@ export const ar: Record<string, string> = {
   "nav.primary": "الرئيسية",
 
   /* make it yours */
-  "miy.title": "اجعلها لك",
-  "miy.subtitle": "اختياري — يمكنك تغيير أي من هذا لاحقاً من الإعدادات.",
   "miy.appearance": "المظهر",
   "miy.weekStarts": "يبدأ الأسبوع عند",
   "miy.light": "فاتح",
@@ -1023,9 +1060,7 @@ export const ar: Record<string, string> = {
   "miy.sunday": "الأحد",
   "miy.monday": "الاثنين",
   "miy.saturday": "السبت",
-  "miy.skip": "تخطٍ",
   "miy.done": "تم",
-  "miy.toast": "تمت التهيئة — غيّر ما تشاء لاحقاً من الإعدادات",
 
   /* registration (name only) */
   "register.kicker": "نظام الحياة الشخصي",
@@ -1392,7 +1427,7 @@ export const ar: Record<string, string> = {
   "data.errorLogCopied": "السجل اتنسخ",
   "data.errorLogClear": "امسح",
 
-  "about.version": "الإصدار 1.4.0 · مخطط 1 · رفيق يومك، براحتك.",
+  "about.version": "الإصدار 1.5.0 · مخطط 1 · رفيق يومك، براحتك.",
   "about.body": "بيئة شخصية هادئة ومرنة: تخطيط يومي، تركيز أسبوعي، مساحات للذاكرة، ملاحظات وترفيه وروتين — دون اتصال، خاصة، بلا حسابات.",
   "about.bullet1": "كل البيانات تبقى في IndexedDB بهذا المتصفح",
   "about.bullet2": "لا تحليلات ولا اتصالات شبكية",
@@ -1531,7 +1566,7 @@ export const ar: Record<string, string> = {
   "weekly.addToDay": "إضافة إلى يوم (خطوة منفصلة)",
   "weekly.addToAnotherWeek": "إضافة إلى أسبوع آخر",
   "weekly.passedChoice": "انقضى هذا الأسبوع — القرار لك",
-  "weekly.keepWhere": "يبقى حيث هو",
+  "weekly.keepWhere": "أسيبه في مكانه",
   "weekly.returnToInbox": "إعادة إلى الوارد",
   "weekly.backInInboxToast": "عاد إلى الوارد — الأسبوع يحتفظ بتاريخه",
   "weekly.postponedToast": "أُجّل — لا شيء تحرك",
@@ -1909,6 +1944,59 @@ export const ar: Record<string, string> = {
   "item.comeBackOn": "عُد إليه في (اختياري)",
   "item.willSurfaceToast": "سيظهر في {date}",
   "item.postponedGentlyToast": "أُجّل برفق",
+
+  /* ---- v1.5: الجسر بين الأسبوع واليوم، تكرار الروتين، هوية المساحات،
+         أسطر التعريف، والإعداد ذو البطاقات الثلاث ---- */
+  "today.bridgeTitle": "من خطة أسبوعك",
+  "today.bridgeHint": "اللي أسبوعك حدده لهذا اليوم — جيب اللي عايزه وسيب الباقي.",
+  "today.bridgeAdd": "ضيفها لنهارده",
+  "today.bridgeAddAll": "ضيف كل ده لنهارده",
+  "today.bridgeBroughtToast": "«{title}» على نهارده",
+  "today.bridgeAllBroughtToast": "كل ده على نهارده دلوقتي",
+  "weekly.routinesTitle": "روتيناتك",
+  "weekly.routinesHint": "بتعيش في أيامها — نظرة هادية من هنا",
+  "weekly.routineSteps": "{count} خطوات",
+  "routines.repeatTitle": "الروتين ده بيتكرر",
+  "routines.repeatDesc": "«{name}» هيظهر في أيامه لوحده — من غير ترتيب يومي.",
+  "routines.repeatSavedToast": "الروتين بقى يتكرر",
+  "routines.addRepeatShort": "يتكرر",
+  "routines.repeatChipHint": "دوس لتختار إيقاعه",
+  "routines.repeatNote": "اختياري: فترة ووقت بيحطوا كل ظهور في مكانه لوحده.",
+  "routines.firstHint": "الروتين خطوات بتمشيها بالترتيب — مرة في اليوم، وبلا سلاسل إنجاز.",
+  "item.nowEntertainmentToast": "بقى ترفيه — عدّل تفاصيله من صفحته",
+  "spaces.iconLabel": "الأيقونة",
+  "spaces.colorLabel": "اللون",
+  "spaces.pickIconAria": "اختيار أيقونة",
+  "spaces.pickColorAria": "اختيار لون",
+  "coach.dismiss": "إخفاء السطر",
+  "coach.today": "اليوم تنفيذ — الفترات معلقة على الصلاة، وقفلة اليوم في آخره، واللي أسبوعك حدده لنهارده مستني فوق.",
+  "coach.weekly": "الأسبوع نية مش التزام — حدد لحاجة يوم، ولما يجي يومها هتلاقيها مستنية في صفحة اليوم.",
+  "coach.spaces": "المساحات ذاكرتك — الحاجة الواحدة ممكن تظهر في أكتر من مكان من غير ما تتكرر.",
+  "coach.inbox": "الوارد مرحلة عبور — صنّف اللي جوه أو حطه في يومه، وخليه فاضي على قد ما تقدر.",
+  "coach.routines": "الروتين خطوات بتشتغلها بالترتيب — مرة في اليوم، وتقدر توقف في أي لحظة.",
+  "onboarding.title": "ثلاث لمسات خفيفة ثم نبدأ",
+  "onboarding.step1Title": "بدايتك",
+  "onboarding.step1Subtitle": "الشكل والأسبوع وبداية يومك — كله يتغير لاحقاً من الإعدادات.",
+  "onboarding.dayStarts": "يومك يبدأ عند",
+  "onboarding.dayStartFajr": "الفجر",
+  "onboarding.dayStartMidnight": "منتصف الليل",
+  "onboarding.dayStartFajrNote": "الليل تابع لليوم اللي قبله — حاجة الساعة ٢ الفجر بتتحسب على امبارح.",
+  "onboarding.dayStartMidnightNote": "اليوم بيتبدل مع الساعة ١٢ بالظبط.",
+  "onboarding.step2Title": "فترات يومك",
+  "onboarding.step2Subtitle": "الخمس جاهزين — سمّيهم بلغتك، أو كمّل زي ما هما.",
+  "onboarding.step2Note": "التغيير بيتحفظ فوراً، والمحرر الكامل موجود في الإعدادات › الفترات.",
+  "onboarding.periodNameAria": "اسم الفترة",
+  "onboarding.periodToggleAria": "إظهار أو إخفاء فترة {name}",
+  "onboarding.step3Title": "أول حاجة",
+  "onboarding.step3Subtitle": "حاجة واحدة على بالك؟ سجّلها — أول عادة تولد هنا من أول يوم.",
+  "onboarding.firstThingPlaceholder": "مثلاً: أرتب درج المكتب…",
+  "onboarding.captureIt": "سجّلها",
+  "onboarding.step3Note": "بتروح الوارد — أول ما تجهز صنّفها أو حطها في يوم.",
+  "onboarding.next": "التالي",
+  "onboarding.back": "رجوع",
+  "onboarding.skipAll": "أتخطى كله",
+  "onboarding.doneToast": "يلا بينا — يومك مستنيك",
+  "onboarding.doneCapturedToast": "اتسجلت في الوارد — ويومك مستنيك",
 };
 
 /* ============ runtime translation of service-layer strings ============ */
@@ -2011,6 +2099,19 @@ const RT_EXACT: Record<string, string> = {
   "A note you wanted to come back to.": "ملاحظة أردت العودة إليها.",
   "You kept this for later attention.": "احتفظت بهذا لعناية لاحقة.",
   "You postponed this until today.": "أجّلت هذا حتى اليوم.",
+  /* v1.5 — repeat-rule validation + the new undo labels */
+  "A rule needs an item or a routine.": "القاعدة محتاجة عنصراً أو روتيناً.",
+  "A rule can't have both an item and a routine.": "القاعدة لا تحمل عنصراً وروتيناً معاً.",
+  "The start date should look like 2026-11-13.": "تاريخ البداية يجب أن يبدو هكذا: 2026-11-13.",
+  "The end date should look like 2026-12-31.": "تاريخ النهاية يجب أن يبدو هكذا: 2026-12-31.",
+  "The end date should be after the start date.": "تاريخ النهاية يجب أن يكون بعد تاريخ البداية.",
+  "The interval should be at least 1.": "الفاصل يجب أن يكون ١ على الأقل.",
+  "Pick at least one weekday.": "اختر يوماً واحداً على الأقل من أيام الأسبوع.",
+  "Pick a day of the month (1–31) or “last”.": "اختر يوماً من الشهر (١–٣١) أو «آخر يوم».",
+  "Entertainment status follows its watching/playing progress. Edit it from its entertainment details.":
+    "حالة الترفيه تتبع تقدم المشاهدة أو اللعب — عدّلها من تفاصيل الترفيه الخاصة به.",
+  "Back to its place on the day": "عاد إلى مكانه في اليوم",
+  "Back to its type": "عاد إلى نوعه القديم",
 };
 
 /** Translate a runtime string from the service layer (error message, undo
@@ -2035,9 +2136,17 @@ export function rt(message: string): string {
   if (m) return `أرشفة «${m[1]}» مجدداً`;
   m = /^Removed “(.+)”$/.exec(message);
   if (m) return `أُزيل «${m[1]}»`;
-  m = /^(.+) is already on this page\. Add another session\?$/.exec(message);
-  if (m) return `«${m[1]}» موجود بالفعل في هذه الصفحة. إضافة جلسة أخرى؟`;
-  m = /^(.+) is already on this day\.$/.exec(message);
+  // v1.5: invalid status transitions from the item service (lowercase
+  // enum values — map through the English labels so snake_case like
+  // "in_progress" resolves too)
+  m = /^A (.+) can't be set to (.+)\.$/.exec(message);
+  if (m)
+    return `لا يمكن جعل ${rtLabel(
+      TYPE_EN[m[1]] ?? m[1].charAt(0).toUpperCase() + m[1].slice(1)
+    )} بحالة ${rtLabel(
+      STATUS_EN[m[2]] ?? m[2].charAt(0).toUpperCase() + m[2].slice(1)
+    )}.`;
+  m = /^“(.+)” is already on this day\.$/.exec(message);
   if (m) return `«${m[1]}» موجود بالفعل في هذا اليوم.`;
   return message;
 }

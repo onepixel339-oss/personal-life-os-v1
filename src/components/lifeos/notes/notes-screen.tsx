@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bell, ChevronLeft, ChevronRight, Plus, Undo2 } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,7 +24,6 @@ import { isValidDateString, todayLocal } from "@/lib/lifeos/dates";
 import type { Item } from "@/lib/lifeos/types";
 import {
   Card,
-  Chip,
   EmptyState,
   PageHeader,
   SectionLabel,
@@ -512,4 +511,3 @@ export function NoteEditorScreen({ itemId }: { itemId: string }) {
   );
 }
 
-export { ArrowLeft, Plus, Undo2, Chip };

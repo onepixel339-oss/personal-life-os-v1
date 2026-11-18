@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -15,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useRoutines } from "@/lib/lifeos/hooks";
+import { useRoutines, useViewPrefs } from "@/lib/lifeos/hooks";
 import { run } from "@/lib/lifeos/run";
 import { todayLocal } from "@/lib/lifeos/dates";
 import {
@@ -24,12 +31,21 @@ import {
   archiveRoutine,
   createRoutine,
   endRoutine,
+  nextStepStatus,
   removeRoutineItem,
   setStepStatus,
   startRoutine,
 } from "@/lib/lifeos/services/routine-service";
-import type { Routine, RoutineExecutionStep } from "@/lib/lifeos/types";
-import { useT } from "@/lib/lifeos/i18n";
+import type { RecurrencePattern, Routine, RoutineExecutionStep } from "@/lib/lifeos/types";
+import { useT, periodName } from "@/lib/lifeos/i18n";
+import { DEFAULT_FIRST_DAY, SETTING_KEYS } from "@/lib/lifeos/defaults";
+import {
+  createRule,
+  enableRule,
+  pauseRule,
+  resumeRule,
+  updateRule,
+} from "@/lib/lifeos/services/recurrence-service";
 import {
   Card,
   Chip,
@@ -38,6 +54,7 @@ import {
   SectionLabel,
 } from "../shared/primitives";
 import { AddToTodayDialog } from "../shared/dialogs";
+import { CoachLine } from "../shared/coach-line";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
 import { cn } from "@/lib/utils";
@@ -80,6 +97,11 @@ export function RoutinesScreen() {
       {activeExecution && activeExecution.state === "in_progress" ? (
         <RunnerCard executionId={activeExecution.id} />
       ) : null}
+
+      <CoachLine
+        settingKey={SETTING_KEYS.coachRoutines}
+        messageKey="coach.routines"
+      />
 
       {data === undefined ? (
         <div className="py-12 text-center font-serif italic text-muted-foreground">{t("common.loading")}</div>
@@ -136,13 +158,23 @@ export function RoutinesScreen() {
         title={t("routines.placeTitle")}
         onConfirm={async (choice) => {
           if (!addToTodayFor) return;
+          // v1.5: the period + time the user picked in the dialog actually
+          // reach the day now — they used to be read and dropped.
           const res = await run(
-            addRoutineToToday(addToTodayFor.id, choice.date),
+            addRoutineToToday(addToTodayFor.id, choice.date, {
+              periodSettingId: choice.periodSettingId,
+              startTime: choice.startTime,
+            }),
             { quiet: true }
           );
           if (res.ok) {
             const { toast } = await import("sonner");
-            toast(t("routines.placedToast", { name: addToTodayFor.name, date: choice.date }));
+            toast(
+              t("routines.placedToast", {
+                name: addToTodayFor.name,
+                date: choice.date,
+              })
+            );
           }
         }}
       />
@@ -161,8 +193,28 @@ function RoutineCard({
 }) {
   const data = useRoutines();
   const { t } = useT();
+  const [repeatOpen, setRepeatOpen] = useState(false);
+  // v1.5: the routine's repeat rule (if any) — drives the status chip.
+  const rule = useLiveQuery(
+    async () => {
+      const rules = await db.recurrenceRules
+        .where("routineId")
+        .equals(routine.id)
+        .toArray();
+      return rules.find((r) => r.state !== "disabled") ?? rules[0] ?? null;
+    },
+    [routine.id]
+  );
   const steps = data?.itemsByRoutine.get(routine.id) ?? [];
   const total = steps.reduce((acc, s) => acc + (s.durationMinutes ?? 0), 0);
+  const patternLabel = (p: RecurrencePattern) =>
+    p === "daily"
+      ? t("notes.everyDay")
+      : p === "weekdays"
+        ? t("qa.weekdays")
+        : p === "weekly"
+          ? t("qa.weekly")
+          : t("qa.monthly");
   return (
     <Card className="px-4 py-3.5 md:px-5">
       <div className="flex items-start justify-between gap-2">
@@ -227,13 +279,282 @@ function RoutineCard({
           </Button>
         </div>
       </div>
-      <div className="mt-2.5 flex items-center gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
         <AddStepInline routineId={routine.id} />
         {total ? (
           <Chip tone="neutral">{t("routines.minTotal", { count: total })}</Chip>
         ) : null}
+        {rule ? (
+          <Chip
+            tone={rule.state === "active" ? "lavender" : "muted"}
+            title={t("routines.repeatChipHint")}
+            onClick={() => setRepeatOpen(true)}
+          >
+            <Zap className="h-3 w-3" />
+            {patternLabel(rule.pattern)}
+            {rule.state === "paused" ? ` · ${t("item.pausedState")}` : ""}
+            {rule.state === "disabled" ? ` · ${t("item.stoppedState")}` : ""}
+          </Chip>
+        ) : (
+          <Chip
+            tone="muted"
+            title={t("routines.repeatChipHint")}
+            onClick={() => setRepeatOpen(true)}
+          >
+            + {t("routines.addRepeatShort")}
+          </Chip>
+        )}
       </div>
+      <RoutineRepeatDialog
+        open={repeatOpen}
+        onOpenChange={setRepeatOpen}
+        routine={routine}
+      />
     </Card>
+  );
+}
+
+/* ---------- v1.5: routine repeat (rule.routineId, finally in the UI) ---------- */
+
+function RoutineRepeatDialog({
+  open,
+  onOpenChange,
+  routine,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  routine: Routine;
+}) {
+  const { t } = useT();
+  const prefs = useViewPrefs();
+  const existing = useLiveQuery(
+    async () => {
+      const rules = await db.recurrenceRules
+        .where("routineId")
+        .equals(routine.id)
+        .toArray();
+      return rules.find((r) => r.state !== "disabled") ?? rules[0] ?? null;
+    },
+    [routine.id]
+  );
+  const periodSettings = useLiveQuery(
+    () =>
+      db.periodSettings
+        .orderBy("order")
+        .filter((p) => p.enabled)
+        .toArray(),
+    []
+  );
+  const [pattern, setPattern] = useState("daily");
+  const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
+  const [startDate, setStartDate] = useState(todayLocal());
+  const [period, setPeriod] = useState("none");
+  const [time, setTime] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const [prevKey, setPrevKey] = useState<string | null>(null);
+  const syncKey = `${open}:${existing?.id ?? "none"}`;
+  if (syncKey !== prevKey) {
+    setPrevKey(syncKey);
+    if (open) {
+      if (existing) {
+        setPattern(existing.pattern);
+        setWeekdays(existing.byWeekday ?? [0, 1, 2, 3, 4]);
+        setStartDate(existing.startDate);
+        setPeriod(existing.periodSettingId ?? "none");
+        setTime(existing.startTime ?? "");
+      } else {
+        setPattern("daily");
+        setWeekdays([0, 1, 2, 3, 4]);
+        setStartDate(todayLocal());
+        setPeriod("none");
+        setTime("");
+      }
+    }
+  }
+
+  const dayLabels = [
+    t("item.day.0"),
+    t("item.day.1"),
+    t("item.day.2"),
+    t("item.day.3"),
+    t("item.day.4"),
+    t("item.day.5"),
+    t("item.day.6"),
+  ];
+
+  const save = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const patch = {
+        pattern: pattern as RecurrencePattern,
+        byWeekday:
+          pattern === "weekdays"
+            ? (weekdays.filter((d) => d >= 0 && d <= 6) as (0 | 1 | 2 | 3 | 4 | 5 | 6)[])
+            : undefined,
+        startDate,
+        startTime: time || undefined,
+        periodSettingId: period !== "none" ? period : undefined,
+      };
+      if (existing && existing.state !== "disabled") {
+        await run(updateRule(existing.id, patch), {
+          success: t("routines.repeatSavedToast"),
+        });
+      } else if (existing) {
+        // a resting rule: the edit wakes it up
+        await run(updateRule(existing.id, patch), { quiet: true });
+        await run(enableRule(existing.id), {
+          success: t("routines.repeatSavedToast"),
+        });
+      } else {
+        await run(
+          createRule({
+            routineId: routine.id,
+            interval: 1,
+            ...patch,
+            weekAnchor: ((prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY) % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6,
+          }),
+          { success: t("routines.repeatSavedToast") }
+        );
+      }
+      onOpenChange(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md rounded-2xl border-border bg-surface-raised">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg">
+            {t("routines.repeatTitle")}
+          </DialogTitle>
+          <DialogDescription>
+            {t("routines.repeatDesc", { name: routine.name })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3.5">
+          <label className="grid gap-1.5">
+            <span className="text-[12px] font-medium text-ink-soft">{t("item.pattern")}</span>
+            <Select value={pattern} onValueChange={setPattern}>
+              <SelectTrigger className="w-full rounded-xl border-border bg-surface">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-border bg-surface-raised">
+                <SelectItem value="daily">{t("notes.everyDay")}</SelectItem>
+                <SelectItem value="weekdays">{t("item.selectedWeekdays")}</SelectItem>
+                <SelectItem value="weekly">{t("qa.weekly")}</SelectItem>
+                <SelectItem value="monthly">{t("qa.monthly")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          {pattern === "weekdays" ? (
+            <div>
+              <span className="text-[12px] font-medium text-ink-soft">{t("item.onDays")}</span>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {dayLabels.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-pressed={weekdays.includes(i)}
+                    onClick={() =>
+                      setWeekdays((days) =>
+                        days.includes(i) ? days.filter((d) => d !== i) : [...days, i]
+                      )
+                    }
+                    className={cn(
+                      "h-8 w-11 rounded-full border text-[12px] font-medium transition-colors",
+                      weekdays.includes(i)
+                        ? "border-primary-soft bg-primary-soft/50 text-primary-deep"
+                        : "border-border bg-surface text-muted-foreground"
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <label className="grid gap-1.5">
+            <span className="text-[12px] font-medium text-ink-soft">{t("item.starts")}</span>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="rounded-xl border-border bg-surface"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">{t("qa.period")}</span>
+              <Select value={period} onValueChange={setPeriod}>
+                <SelectTrigger className="w-full rounded-xl border-border bg-surface">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl border-border bg-surface-raised">
+                  <SelectItem value="none">{t("dialog.noPeriod")}</SelectItem>
+                  {(periodSettings ?? []).map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {periodName(p.name)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">{t("qa.time")}</span>
+              <Input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="rounded-xl border-border bg-surface"
+              />
+            </label>
+          </div>
+          <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+            {t("routines.repeatNote")}
+          </p>
+        </div>
+        <DialogFooter className="gap-2">
+          {existing && existing.state === "active" ? (
+            <Button
+              variant="ghost"
+              className="rounded-full text-muted-foreground"
+              onClick={async () => {
+                await run(pauseRule(existing.id), { success: t("item.pausedToast") });
+                onOpenChange(false);
+              }}
+            >
+              {t("item.pause")}
+            </Button>
+          ) : null}
+          {existing && existing.state === "paused" ? (
+            <Button
+              variant="ghost"
+              className="rounded-full text-muted-foreground"
+              onClick={async () => {
+                await run(resumeRule(existing.id), { success: t("item.resumedToast") });
+                onOpenChange(false);
+              }}
+            >
+              {t("item.resume")}
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-full">
+            {t("common.cancel")}
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={() => void save()}
+            className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
+          >
+            {t("item.saveRepeat")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -315,7 +636,10 @@ function CreateRoutineDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-lg">{t("routines.newRoutine")}</DialogTitle>
           <DialogDescription>
-            {t("routines.createDesc")}
+            {t("routines.createDesc")}{" "}
+            <span className="block">
+              {t("routines.firstHint")}
+            </span>
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -422,9 +746,28 @@ function RunnerDialog({
 
   useEffect(() => {
     if (!routine) return;
-    void startRoutine(routine.id, todayLocal()).then((res) => {
+    void (async () => {
+      // v1.5: when this routine already has a place on today's page, the
+      // execution links to that entry — removing the day entry later keeps
+      // history consistent instead of leaving two disconnected artifacts.
+      let dailyEntryId: string | undefined;
+      try {
+        const date = todayLocal();
+        const plan = await db.dailyPlans.where("date").equals(date).first();
+        if (plan) {
+          const entry = await db.dailyEntries
+            .where("dailyPlanId")
+            .equals(plan.id)
+            .filter((e) => e.routineId === routine.id)
+            .first();
+          dailyEntryId = entry?.id;
+        }
+      } catch {
+        /* quiet — linking is best-effort */
+      }
+      const res = await startRoutine(routine.id, todayLocal(), dailyEntryId);
       if (res.ok) setExecutionId(res.value.id);
-    });
+    })();
   }, [routine]);
 
   return (
@@ -511,15 +854,15 @@ function RunnerBody({
             <button
               type="button"
               onClick={async () => {
-                const next =
-                  step.status === "done"
-                    ? "pending"
-                    : step.status === "skipped"
-                      ? "done"
-                      : "skipped";
-                await run(setStepStatus(step.id, next as "pending" | "done" | "skipped"), {
-                  quiet: true,
-                });
+                // v1.5: the first tap completes a step — skipping is the
+                // second thought, not the first (it used to be the reverse).
+                await run(
+                  setStepStatus(
+                    step.id,
+                    nextStepStatus(step.status)
+                  ),
+                  { quiet: true }
+                );
               }}
               className={cn(
                 "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-start transition-colors",

@@ -33,7 +33,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useLifeToday, useViewPrefs, useWeeklyData, type WeeklyRow } from "@/lib/lifeos/hooks";
+import {
+  useLifeToday,
+  useRoutines,
+  useViewPrefs,
+  useWeeklyData,
+  type WeeklyRow,
+} from "@/lib/lifeos/hooks";
 import {
   addDays,
   formatDate,
@@ -43,13 +49,14 @@ import {
 } from "@/lib/lifeos/dates";
 import { run } from "@/lib/lifeos/run";
 import { t, useT } from "@/lib/lifeos/i18n";
+import { toArabicDigits } from "@/lib/lifeos/lang-state";
 import {
   addEntryToWeek,
   removeEntryFromWeek,
   setWeekEntryDay,
 } from "@/lib/lifeos/services/planning-service";
 import { setView } from "@/lib/lifeos/services/settings-service";
-import { SETTING_KEYS } from "@/lib/lifeos/defaults";
+import { SETTING_KEYS, DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import {
   archiveItem,
   setItemStatus,
@@ -65,11 +72,8 @@ import {
   StatusChip,
   ViewSwitcher,
 } from "../shared/primitives";
-import {
-  AddToTodayDialog,
-  AddToWeekDialog,
-  ItemPickerDialog,
-} from "../shared/dialogs";
+import { AddToTodayDialog, AddToWeekDialog, ItemPickerDialog } from "../shared/dialogs";
+import { CoachLine } from "../shared/coach-line";
 import { cn } from "@/lib/utils";
 
 export function WeeklyScreen() {
@@ -79,9 +83,12 @@ export function WeeklyScreen() {
   const openItem = useUIStore((s) => s.openItem);
   const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const prefs = useViewPrefs();
-  const { t } = useT();
-  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
+  const { t, lang } = useT();
+  const firstDay = prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
   const data = useWeeklyData(weekStartDate, firstDay);
+  // v1.5: routines live on their days — the week shows them as a quiet
+  // overview line so the whole week is finally visible in one place.
+  const routines = useRoutines();
   const realToday = useLifeToday();
   const [pickerDay, setPickerDay] = useState<string | null>(null);
   const [outcomeOpen, setOutcomeOpen] = useState(false);
@@ -151,6 +158,11 @@ export function WeeklyScreen() {
         {formatWeekRange(data.weekStart, data.weekEnd, dateFormat)}
       </p>
 
+      <CoachLine
+        settingKey={SETTING_KEYS.coachWeekly}
+        messageKey="coach.weekly"
+      />
+
       {/* outcomes pinned top (§3.2.2) */}
       {data.outcomes.length > 0 ? (
         <section className="mb-4 rounded-2xl border border-primary-soft bg-primary-soft/20 px-4 py-3 md:px-5">
@@ -170,11 +182,56 @@ export function WeeklyScreen() {
                   >
                     {row.item.title}
                   </button>
+                  {row.scheduledDate ? (
+                    <span className="shrink-0 text-[11px] text-muted-foreground">
+                      · {weekdayName(row.scheduledDate, true)}
+                    </span>
+                  ) : null}
                   <OutcomeProgress row={row} />
                 </div>
                 <SubtaskSummary outcomeId={row.item.id} />
               </li>
             ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* routines overview (v1.5) — read-only, they live on their days */}
+      {routines && routines.active.length > 0 ? (
+        <section className="mb-4 rounded-2xl border border-dashed border-border-strong/70 bg-surface-context/40 px-4 py-3 md:px-5">
+          <header className="flex items-baseline justify-between gap-3">
+            <h2 className="font-serif text-[15px] text-ink">{t("weekly.routinesTitle")}</h2>
+            <span className="text-[11px] text-muted-foreground">
+              {t("weekly.routinesHint")}
+            </span>
+          </header>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            {routines.active.slice(0, 6).map((r) => {
+              const steps = routines.itemsByRoutine.get(r.id)?.length ?? 0;
+              const stepText = t("weekly.routineSteps", { count: steps });
+              return (
+                <li key={r.id}>
+                  <Chip tone="neutral">
+                    {r.name}
+                    {steps
+                      ? ` · ${
+                          lang === "ar"
+                            ? stepText.replace(
+                                String(steps),
+                                toArabicDigits(String(steps))
+                              )
+                            : stepText
+                        }`
+                      : ""}
+                  </Chip>
+                </li>
+              );
+            })}
+            {routines.active.length > 6 ? (
+              <li>
+                <Chip tone="muted">+{routines.active.length - 6}</Chip>
+              </li>
+            ) : null}
           </ul>
         </section>
       ) : null}
@@ -277,7 +334,6 @@ export function WeeklyScreen() {
         <WeeklyTimeline
           data={data}
           realToday={realToday}
-          isPastWeek={data.weekEnd < realToday}
         />
       )}
 
@@ -350,7 +406,7 @@ function WeeklyRowItem({
   // v1.4: the add-to-week dialog follows the "week starts on" setting
   // instead of a hardcoded Saturday anchor.
   const prefs = useViewPrefs();
-  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
+  const firstDay = prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
   const [addToday, setAddToday] = useState(false);
   const [addWeek, setAddWeek] = useState(false);
   const showChoose = isPastWeek && row.item.status !== "completed" && row.item.status !== "cancelled";
@@ -396,32 +452,35 @@ function WeeklyRowItem({
             {t("entry.openItem")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <div className="px-2 py-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
-            {t("weekly.dayOfThisWeek")}
-          </div>
-          {days.map((d) => (
-            <DropdownMenuItem
-              key={d}
-              onClick={async () => {
-                if (row.entry) {
-                  await run(setWeekEntryDay(row.entry.id, d), { quiet: true });
-                } else if (row.occurrence?.ruleId) {
-                  // virtual occurrence: nothing to assign — it follows its own date
-                }
-              }}
-            >
-              {weekdayName(d, true)} · {formatDate(d, dateFormat as "dmy" | "mdy" | "ymd")}
-              {row.scheduledDate === d ? " ✓" : ""}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuItem
-            onClick={async () => {
-              if (row.entry) await run(setWeekEntryDay(row.entry.id, null), { quiet: true });
-            }}
-          >
-            {t("weekly.noDayYetShort")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {/* v1.5: day assignment + removal exist only for real week entries —
+              a virtual occurrence follows its own rule; those menu items used
+              to render as silent no-ops. */}
+          {row.entry ? (
+            <>
+              <div className="px-2 py-1 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                {t("weekly.dayOfThisWeek")}
+              </div>
+              {days.map((d) => (
+                <DropdownMenuItem
+                  key={d}
+                  onClick={async () => {
+                    await run(setWeekEntryDay(row.entry!.id, d), { quiet: true });
+                  }}
+                >
+                  {weekdayName(d, true)} · {formatDate(d, dateFormat as "dmy" | "mdy" | "ymd")}
+                  {row.scheduledDate === d ? " ✓" : ""}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem
+                onClick={async () => {
+                  await run(setWeekEntryDay(row.entry!.id, null), { quiet: true });
+                }}
+              >
+                {t("weekly.noDayYetShort")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem onClick={() => setAddToday(true)}>
             <CalendarPlus className="h-3.5 w-3.5" /> {t("weekly.addToDay")}
           </DropdownMenuItem>
@@ -470,18 +529,18 @@ function WeeklyRowItem({
             </>
           ) : null}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            className="text-[#a5533c] focus:text-[#a5533c]"
-            onClick={async () => {
-              if (row.entry) {
-                await run(removeEntryFromWeek(row.entry.id), {
+          {row.entry ? (
+            <DropdownMenuItem
+              className="text-[#a5533c] focus:text-[#a5533c]"
+              onClick={async () => {
+                await run(removeEntryFromWeek(row.entry!.id), {
                   success: t("weekly.removedFromWeekToast"),
                 });
-              }
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" /> {t("weekly.removeFromWeek")}
-          </DropdownMenuItem>
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> {t("weekly.removeFromWeek")}
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -490,22 +549,20 @@ function WeeklyRowItem({
         onOpenChange={setAddToday}
         itemTitle={row.item.title}
         onConfirm={async (choice) => {
-          const { addEntryToDay, setEntryPeriodBySetting } = await import(
+          const { addEntryToDay } = await import(
             "@/lib/lifeos/services/planning-service"
           );
-          const res = await run(
+          await run(
             addEntryToDay({
               date: choice.date,
               kind: "item",
               itemId: row.item.id,
+              periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
               allowMultiple: true,
             }),
             { quiet: true }
           );
-          if (res.ok && choice.periodSettingId) {
-            await run(setEntryPeriodBySetting(res.value.id, choice.periodSettingId), { quiet: true });
-          }
         }}
       />
       <AddToWeekDialog
@@ -560,11 +617,9 @@ function SubtaskSummary({ outcomeId }: { outcomeId: string }) {
 function WeeklyTimeline({
   data,
   realToday,
-  isPastWeek,
 }: {
   data: NonNullable<ReturnType<typeof useWeeklyData>>;
   realToday: string;
-  isPastWeek: boolean;
 }) {
   const openItem = useUIStore((s) => s.openItem);
   return (
@@ -614,7 +669,6 @@ function WeeklyTimeline({
       <p className="mt-3 text-center text-[11px] text-muted-foreground/70">
         {t("weekly.timelineCaption")}
       </p>
-      {isPastWeek ? null : null}
     </div>
   );
 }

@@ -7,11 +7,23 @@ import {
   Archive,
   ArchiveRestore,
   BookOpen,
+  Code,
+  Compass,
   FolderPlus,
+  Globe,
+  Heart,
+  Leaf,
+  Moon,
   MoreHorizontal,
+  Music,
+  PenLine,
   Pencil,
   Plus,
+  Sparkles,
+  Star,
+  Sun,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +52,8 @@ import {
   restoreSpace,
   spaceNameExists,
   updateSpace,
+  SPACE_COLORS,
+  SPACE_ICONS,
 } from "@/lib/lifeos/services/space-service";
 import { removeSpaceLink } from "@/lib/lifeos/services/item-service";
 import type { Item, Space } from "@/lib/lifeos/types";
@@ -53,20 +67,58 @@ import {
   StatusChip,
 } from "../shared/primitives";
 import { AddToTodayDialog, ItemPickerDialog, MoveToSpaceDialog } from "../shared/dialogs";
+import { CoachLine } from "../shared/coach-line";
 import { cn } from "@/lib/utils";
+import { useLifeToday } from "@/lib/lifeos/hooks";
+import { SETTING_KEYS } from "@/lib/lifeos/defaults";
 
-const COPY_SUGGESTIONS_EN = [
-  "Learning English",
-  "Reading",
-  "Personal growth",
-  "Home & family",
-  "Health",
-];
-void COPY_SUGGESTIONS_EN;
+/* v1.5 — space identity: the icon + color the service layer always supported
+   finally reach the UI (tokens only, never raw hex in data). */
+const SPACE_ICON_BY_KEY: Record<string, LucideIcon> = {
+  book: BookOpen,
+  leaf: Leaf,
+  sun: Sun,
+  moon: Moon,
+  star: Star,
+  sparkle: Sparkles,
+  globe: Globe,
+  compass: Compass,
+  heart: Heart,
+  pen: PenLine,
+  music: Music,
+  code: Code,
+};
+
+export const SPACE_COLOR_VAR: Record<string, string> = {
+  terracotta: "var(--space-terracotta)",
+  sage: "var(--space-sage)",
+  lavender: "var(--space-lavender)",
+  sand: "var(--space-sand)",
+  clay: "var(--space-clay)",
+  olive: "var(--space-olive)",
+};
+
+function SpaceIcon({
+  icon,
+  color,
+  className,
+}: {
+  icon?: string;
+  color?: string;
+  className?: string;
+}) {
+  const Icon = (icon && SPACE_ICON_BY_KEY[icon]) || BookOpen;
+  return (
+    <Icon
+      className={className ?? "h-4 w-4"}
+      style={color ? { color: SPACE_COLOR_VAR[color] ?? "var(--primary)" } : undefined}
+      aria-hidden
+    />
+  );
+}
 
 export function SpacesScreen() {
   const spaces = useSpaces();
-  const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const { t } = useT();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -100,6 +152,11 @@ export function SpacesScreen() {
             <FolderPlus className="h-4 w-4" /> {t("spaces.newSpace")}
           </Button>
         }
+      />
+
+      <CoachLine
+        settingKey={SETTING_KEYS.coachSpaces}
+        messageKey="coach.spaces"
       />
 
       {spaces.active.length === 0 ? (
@@ -156,12 +213,6 @@ export function SpacesScreen() {
       ) : null}
 
       <CreateSpaceDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <button
-        type="button"
-        className="hidden"
-        onClick={() => openQuickAdd({ source: "global" })}
-        aria-hidden
-      />
     </div>
   );
 }
@@ -179,7 +230,11 @@ function SpaceCard({ space }: { space: Space }) {
           className="min-w-0 flex-1 text-start"
         >
           <h3 className="truncate font-serif text-[17px] text-ink">
-            <BookOpen className="me-1.5 inline h-4 w-4 text-primary/70" />
+            <SpaceIcon
+              icon={space.icon}
+              color={space.color}
+              className="me-1.5 inline h-4 w-4"
+            />
             {space.name}
           </h3>
           {space.description ? (
@@ -191,11 +246,11 @@ function SpaceCard({ space }: { space: Space }) {
         <SpaceMenu space={space} />
       </div>
       <div className="mt-2.5 flex items-center justify-between">
-        <span className="text-[11.5px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
           {space.color ? (
             <span
-              className="me-2 inline-block h-2 w-2 rounded-full align-middle"
-              style={{ background: "var(--primary)" }}
+              className="inline-block h-2 w-2 rounded-full align-middle"
+              style={{ background: SPACE_COLOR_VAR[space.color] ?? "var(--primary)" }}
               aria-hidden
             />
           ) : null}
@@ -261,6 +316,7 @@ export function SpaceScreen({ spaceId }: { spaceId: string }) {
   const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const setTodayDate = useUIStore((s) => s.setTodayDate);
   const prefs = useViewPrefs();
+  const lifeToday = useLifeToday();
   const { t } = useT();
   const [pickOpen, setPickOpen] = useState(false);
   const [addTodayFor, setAddTodayFor] = useState<Item | null>(null);
@@ -347,7 +403,9 @@ export function SpaceScreen({ spaceId }: { spaceId: string }) {
                   key={`t-${i.id}`}
                   tone="terracotta"
                   onClick={() => {
-                    setTodayDate(new Date().toISOString().slice(0, 10));
+                    // v1.5: the Fajr life-day, not UTC midnight — a late
+                    // evening tap used to land on the wrong day.
+                    setTodayDate(lifeToday);
                     navigate({ name: "today" });
                   }}
                 >
@@ -486,26 +544,86 @@ export function SpaceScreen({ spaceId }: { spaceId: string }) {
         itemTitle={addTodayFor?.title}
         onConfirm={async (choice) => {
           if (!addTodayFor) return;
-          const { addEntryToDay, setEntryPeriodBySetting } = await import(
+          const { addEntryToDay } = await import(
             "@/lib/lifeos/services/planning-service"
           );
-          const res = await run(
+          await run(
             addEntryToDay({
               date: choice.date,
               kind: "item",
               itemId: addTodayFor.id,
+              periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
               allowMultiple: true,
             }),
             { quiet: true }
           );
-          if (res.ok && choice.periodSettingId) {
-            await run(setEntryPeriodBySetting(res.value.id, choice.periodSettingId), {
-              quiet: true,
-            });
-          }
         }}
       />
+    </div>
+  );
+}
+
+/* ---------- space identity picker (v1.5) ---------- */
+
+function SpaceIdentityPicker({
+  icon,
+  color,
+  onIcon,
+  onColor,
+}: {
+  icon: string;
+  color: string;
+  onIcon: (v: string) => void;
+  onColor: (v: string) => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className="grid gap-2">
+      <div>
+        <p className="text-[11.5px] font-medium text-ink-soft">{t("spaces.iconLabel")}</p>
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {SPACE_ICONS.map((key) => {
+            const I = SPACE_ICON_BY_KEY[key] ?? BookOpen;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-label={t("spaces.pickIconAria")}
+                aria-pressed={icon === key}
+                onClick={() => onIcon(icon === key ? "" : key)}
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full border transition-colors",
+                  icon === key
+                    ? "border-primary-soft bg-primary-soft/40 text-primary-deep"
+                    : "border-border bg-surface text-muted-foreground hover:text-ink-soft"
+                )}
+              >
+                <I className="h-4 w-4" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div>
+        <p className="text-[11.5px] font-medium text-ink-soft">{t("spaces.colorLabel")}</p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {SPACE_COLORS.map((key) => (
+            <button
+              key={key}
+              type="button"
+              aria-label={t("spaces.pickColorAria")}
+              aria-pressed={color === key}
+              onClick={() => onColor(color === key ? "" : key)}
+              className={cn(
+                "h-7 w-7 rounded-full border-2 transition-transform",
+                color === key ? "scale-110 border-ink-soft" : "border-transparent"
+              )}
+              style={{ background: SPACE_COLOR_VAR[key] }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -523,6 +641,8 @@ function CreateSpaceDialog({
   const { t } = useT();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [icon, setIcon] = useState("");
+  const [color, setColor] = useState("");
   const [warn, setWarn] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -533,6 +653,8 @@ function CreateSpaceDialog({
         if (!o) {
           setName("");
           setDescription("");
+          setIcon("");
+          setColor("");
           setWarn(null);
         }
       }}
@@ -567,6 +689,12 @@ function CreateSpaceDialog({
             placeholder={t("spaces.descPlaceholder")}
             className="min-h-[64px] rounded-xl border-border bg-surface"
           />
+          <SpaceIdentityPicker
+            icon={icon}
+            color={color}
+            onIcon={setIcon}
+            onColor={setColor}
+          />
           {warn ? (
             <p className="text-[12.5px] text-[#a5533c]">{warn}</p>
           ) : null}
@@ -580,7 +708,15 @@ function CreateSpaceDialog({
             onClick={async () => {
               setBusy(true);
               try {
-                const res = await run(createSpace({ name, description }), { quiet: true });
+                const res = await run(
+                  createSpace({
+                    name,
+                    description,
+                    icon: icon || undefined,
+                    color: color || undefined,
+                  }),
+                  { quiet: true }
+                );
                 if (res.ok) {
                   const { toast } = await import("sonner");
                   toast(t("spaces.readyToast", { name: res.value.name }));
@@ -612,6 +748,8 @@ function EditSpaceDialog({
 }) {
   const [name, setName] = useState(space.name);
   const [description, setDescription] = useState(space.description ?? "");
+  const [icon, setIcon] = useState(space.icon ?? "");
+  const [color, setColor] = useState(space.color ?? "");
   const { t } = useT();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -633,6 +771,12 @@ function EditSpaceDialog({
             onChange={(e) => setDescription(e.target.value)}
             className="min-h-[64px] rounded-xl border-border bg-surface"
           />
+          <SpaceIdentityPicker
+            icon={icon}
+            color={color}
+            onIcon={setIcon}
+            onColor={setColor}
+          />
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-full">
@@ -641,7 +785,18 @@ function EditSpaceDialog({
           <Button
             disabled={!name.trim()}
             onClick={async () => {
-              const res = await run(updateSpace(space.id, { name, description }), { quiet: true });
+              const res = await run(
+                updateSpace(space.id, {
+                  name,
+                  description,
+                  // v1.5.1 (review M3): null clears — undefined meant "no
+                  // change", so deselecting in Edit silently kept the old
+                  // icon/color.
+                  icon: icon || null,
+                  color: color || null,
+                }),
+                { quiet: true }
+              );
               if (res.ok) onOpenChange(false);
             }}
             className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"

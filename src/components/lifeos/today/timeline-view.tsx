@@ -9,7 +9,7 @@ import type { ResolvedPeriod } from "@/lib/lifeos/types";
 import { formatTime, nowMinutes, timeToMinutes } from "@/lib/lifeos/dates";
 import { periodName, periodTagline, useT } from "@/lib/lifeos/i18n";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { Chip, EmptyState } from "../shared/primitives";
+import { EmptyState } from "../shared/primitives";
 import { cn } from "@/lib/utils";
 
 const PX_PER_MIN = 1.15;
@@ -63,6 +63,7 @@ export function TodayTimeline({
   isToday: boolean;
 }) {
   const openItem = useUIStore((s) => s.openItem);
+  const navigate = useUIStore((s) => s.navigate);
   const { t } = useT();
 
   const model = useMemo(() => {
@@ -181,7 +182,10 @@ export function TodayTimeline({
                     key={placed.row.key}
                     type="button"
                     onClick={() => {
+                      // v1.5: routine blocks navigate like their list-view
+                      // twins — they used to be silent dead-ends here.
                       if (placed.row.item) openItem(placed.row.item.id);
+                      else if (placed.row.routine) navigate({ name: "routines" });
                     }}
                     className={cn(
                       "absolute overflow-hidden rounded-lg border px-2 py-1 text-start",
@@ -217,6 +221,7 @@ export function TodayTimeline({
                     type="button"
                     onClick={() => {
                       if (row.item) openItem(row.item.id);
+                      else if (row.routine) navigate({ name: "routines" });
                     }}
                     className={cn(
                       "max-w-full truncate rounded-full border px-2 py-0.5 text-[11px]",
@@ -271,6 +276,7 @@ export function TodayTimeline({
                 type="button"
                 onClick={() => {
                   if (row.item) openItem(row.item.id);
+                  else if (row.routine) navigate({ name: "routines" });
                 }}
                 className={cn(
                   "max-w-full truncate rounded-full border px-2.5 py-1 text-[12px]",
@@ -288,9 +294,6 @@ export function TodayTimeline({
       <p className="mt-2 text-center text-[11px] text-muted-foreground/70">
         {t("timeline.caption", { date })}
       </p>
-      <span className="hidden">
-        <Chip>·</Chip>
-      </span>
     </div>
   );
 }

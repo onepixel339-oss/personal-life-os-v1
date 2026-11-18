@@ -9,7 +9,6 @@ import { uid } from "../ids";
 import type {
   DailyEntry,
   Item,
-  ItemSpaceLink,
   ProjectDetails,
   ResumeMarker,
   ResumeSuggestionState,
@@ -335,5 +334,3 @@ export async function gatherResumeInput(
     states,
   };
 }
-
-export type { ItemSpaceLink };

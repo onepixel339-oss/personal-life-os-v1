@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { todayLocal, weekStart } from "./dates";
 import type { DateFormatKind } from "./dates";
+import { DEFAULT_FIRST_DAY } from "./defaults";
 
 export type Route =
   | { name: "today" }
@@ -67,8 +68,8 @@ interface UIState {
 }
 
 function defaultWeekStart(): string {
-  // Saturday default aligns with the seeded setting; corrected at render by settings
-  return weekStart(todayLocal(), 6);
+  // the canonical default anchor; corrected at render by settings
+  return weekStart(todayLocal(), DEFAULT_FIRST_DAY);
 }
 
 export const useUIStore = create<UIState>((set, get) => ({

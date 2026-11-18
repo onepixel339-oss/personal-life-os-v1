@@ -13,6 +13,7 @@ import type {
   RoutineItem,
 } from "../types";
 import { err, ok } from "../types";
+import type { Undoable } from "./history-service";
 import { addEntryToDay } from "./planning-service";
 
 export async function createRoutine(input: {
@@ -68,8 +69,29 @@ export async function updateRoutine(
 
 export async function archiveRoutine(id: string): Promise<Result<void>> {
   try {
-    await db.routines.update(id, { archivedAt: Date.now(), updatedAt: Date.now() });
-    emitChange(["routines"]);
+    // v1.5: archiving a routine also rests its repeat rules — an archived
+    // routine must never keep materializing occurrences on quiet days.
+    await db.transaction(
+      "rw",
+      [db.routines, db.recurrenceRules],
+      async () => {
+        await db.routines.update(id, { archivedAt: Date.now(), updatedAt: Date.now() });
+        const rules = await db.recurrenceRules
+          .where("routineId")
+          .equals(id)
+          .toArray();
+        for (const rule of rules) {
+          if (rule.state !== "disabled") {
+            await db.recurrenceRules.update(rule.id, {
+              state: "disabled",
+              version: rule.version + 1,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+      }
+    );
+    emitChange(["routines", "recurrenceRules"]);
     return ok(undefined);
   } catch (e) {
     console.error(e);
@@ -184,24 +206,43 @@ export async function moveRoutineItem(
   }
 }
 
-/** "Add routine to Today" — one DailyEntry of kind routine (F10). */
+/** "Add routine to Today" — one DailyEntry of kind routine (F10).
+ *  v1.5: the dialog's period + time choices reach the service — they used
+ *  to be collected by the UI and silently dropped on the floor. */
 export async function addRoutineToToday(
   routineId: string,
   date: string,
-  periodId?: string,
-  startTime?: string
-): Promise<Result<{ dailyEntryId: string }>> {
+  opts?: { periodSettingId?: string; startTime?: string }
+): Promise<
+  Result<{ dailyEntryId: string; alreadyPlaced?: boolean } & Undoable>
+> {
   const routine = await db.routines.get(routineId);
   if (!routine) return err({ code: "not_found", message: "Routine not found." });
   const res = await addEntryToDay({
     date,
     kind: "routine",
     routineId,
-    periodId,
-    startTime,
+    periodSettingId: opts?.periodSettingId,
+    startTime: opts?.startTime,
   });
-  if (!res.ok) return res as Result<{ dailyEntryId: string }>;
-  return ok({ dailyEntryId: res.value.id });
+  if (!res.ok) return res as never;
+  // v1.5.1 (review N1): carry the undo up — ⌘Z works even when the caller
+  // toasts quietly.
+  return ok({
+    dailyEntryId: res.value.id,
+    alreadyPlaced: res.value.alreadyPlaced,
+    ...(res.value.undo ? { undo: res.value.undo } : {}),
+  });
+}
+
+/** The gentle step cycle (v1.5): the FIRST tap on a pending step completes
+ *  it — skipping is the second thought, not the first. */
+export function nextStepStatus(
+  status: "pending" | "done" | "skipped"
+): "pending" | "done" | "skipped" {
+  if (status === "pending") return "done";
+  if (status === "done") return "skipped";
+  return "pending";
 }
 
 /** Start: snapshotted steps so later edits don't rewrite history [RULE]. */

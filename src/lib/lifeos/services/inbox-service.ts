@@ -1,7 +1,7 @@
 /* InboxService — fast capture without organizing (§3.4, D5).
    Moving out of Inbox is transactional; item identity never changes [RULE]. */
 
-import { db } from "../db";
+import { db, logActivity } from "../db";
 import { emitChange } from "../events";
 import { keyAfter } from "../fractional";
 import { uid } from "../ids";
@@ -97,50 +97,47 @@ export async function moveInboxItemToSpace(
 }
 
 /** Inbox → Today: DailyEntry + optional inbox removal, one transaction (§3.4).
- *  v1.4: `periodSettingId` (from the add-to-day dialog) maps the entry onto
- *  the day's period snapshot — the silent drop of the user's period choice
- *  is closed at the service layer, where every caller gets it for free. */
+ *  v1.4: `periodSettingId` maps the entry onto the day's period snapshot.
+ *  v1.5: it rides inside addEntryToDay itself — which also honors it on the
+ *  duplicate branch (re-add moves the existing entry instead of erroring). */
 export async function addInboxItemToToday(
   itemId: string,
   opts: {
     date: string;
-    periodId?: string;
     periodSettingId?: string;
     startTime?: string;
     alsoRemoveFromInbox?: boolean;
   }
-): Promise<Result<{ removedFromInbox: boolean }>> {
+): Promise<
+  Result<{ removedFromInbox: boolean; alreadyPlaced?: boolean } & Undoable>
+> {
   const alsoRemove = opts.alsoRemoveFromInbox ?? true;
   const res = await addEntryToDay({
     date: opts.date,
     kind: "item",
     itemId,
-    periodId: opts.periodId,
+    periodSettingId: opts.periodSettingId,
     startTime: opts.startTime,
   });
-  if (!res.ok) {
-    if (res.error.code === "duplicate") {
-      // gentle confirm path is handled by the UI; here it means it's already there
-      return res as Result<{ removedFromInbox: boolean }>;
-    }
-    return res as Result<{ removedFromInbox: boolean }>;
-  }
-  if (opts.periodSettingId) {
-    const { setEntryPeriodBySetting } = await import("./planning-service");
-    await setEntryPeriodBySetting(res.value.id, opts.periodSettingId);
-  }
+  if (!res.ok) return res as never;
+  const alreadyPlaced = res.value.alreadyPlaced;
+  const entryUndo = res.value.undo;
   if (alsoRemove) {
     try {
       await db.transaction("rw", db.inboxEntries, async () => {
         await db.inboxEntries.where("itemId").equals(itemId).delete();
       });
       emitChange(["inboxEntries"]);
-      return ok({ removedFromInbox: true });
+      return ok({
+        removedFromInbox: true,
+        alreadyPlaced,
+        ...(entryUndo ? { undo: entryUndo } : {}),
+      });
     } catch {
-      return ok({ removedFromInbox: false });
+      return ok({ removedFromInbox: false, alreadyPlaced });
     }
   }
-  return ok({ removedFromInbox: false });
+  return ok({ removedFromInbox: false, alreadyPlaced });
 }
 
 /** Inbox → Weekly: WeeklyEntry + optional inbox removal. */
@@ -165,6 +162,58 @@ export async function addInboxItemToWeek(
   return ok({ removedFromInbox: false });
 }
 
+/** v1.5: archive straight from the Inbox — the item is archived AND its
+ *  inbox entry leaves with it, in one transaction (the entry used to linger
+ *  as a ghost row until permanent delete). Undo brings both back. */
+export async function archiveInboxItem(
+  itemId: string
+): Promise<Result<Item & Undoable>> {
+  const item = await db.items.get(itemId);
+  if (!item) return err({ code: "not_found", message: "Item not found." });
+  const previous = item.status;
+  const entries = await db.inboxEntries.where("itemId").equals(itemId).toArray();
+  const now = Date.now();
+  try {
+    await db.transaction("rw", [db.items, db.inboxEntries], async () => {
+      if (previous !== "archived") {
+        await db.items.update(itemId, {
+          status: "archived",
+          archivedAt: now,
+          statusBeforeArchive: previous,
+          updatedAt: now,
+        });
+      }
+      if (entries.length) {
+        await db.inboxEntries.bulkDelete(entries.map((e) => e.id));
+      }
+    });
+    logActivity("item", itemId, "archive");
+    emitChange(["items", "inboxEntries"]);
+    return ok({
+      ...item,
+      status: "archived",
+      undo: {
+        label: `Restore “${item.title}”`,
+        undo: async () => {
+          await db.transaction("rw", [db.items, db.inboxEntries], async () => {
+            await db.items.update(itemId, {
+              status: previous,
+              archivedAt: undefined,
+              statusBeforeArchive: undefined,
+              updatedAt: Date.now(),
+            });
+            if (entries.length) await db.inboxEntries.bulkAdd(entries);
+          });
+          emitChange(["items", "inboxEntries"]);
+        },
+      },
+    });
+  } catch (e) {
+    console.error(e);
+    return err({ code: "write_failed", message: "Couldn't save that. Nothing was changed." });
+  }
+}
+
 /** Return to Inbox (used by end-of-week and item actions). */
 export async function returnItemToInbox(
   itemId: string
@@ -187,8 +236,4 @@ export async function returnItemToInbox(
     console.error(e);
     return err({ code: "write_failed", message: "Couldn't return that to Inbox." });
   }
-}
-
-export async function getInboxCount(): Promise<number> {
-  return db.inboxEntries.count();
 }

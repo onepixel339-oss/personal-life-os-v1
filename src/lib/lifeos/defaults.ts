@@ -14,7 +14,6 @@ export const SETTING_KEYS = {
   userName: "user.name",
   registeredAt: "user.registeredAt",
   welcomeDismissed: "onboarding.welcome.dismissed",
-  makeItYoursDone: "onboarding.makeItYours.dismissed",
   installHintDismissed: "onboarding.installHint.dismissed",
   inboxBadge: "ui.inbox.badge",
   lastBackupAt: "backup.lastExportAt",
@@ -30,6 +29,14 @@ export const SETTING_KEYS = {
   fridayAlarmDone: "friday.alarm.done",
   ramadanPeriodsBackup: "ramadan.periods.backup",
   ramadanPromptShownAt: "ramadan.prompt.shownAt",
+  /* v1.5 — onboarding, the day's beginning, and one-line screen coaches */
+  dayStart: "calendar.dayStart",
+  onboardingDone: "onboarding.v15.done",
+  coachToday: "coach.today.dismissed",
+  coachWeekly: "coach.weekly.dismissed",
+  coachSpaces: "coach.spaces.dismissed",
+  coachInbox: "coach.inbox.dismissed",
+  coachRoutines: "coach.routines.dismissed",
 } as const;
 
 export type ViewKind = "list" | "timeline";
@@ -46,6 +53,10 @@ export const DEFAULT_CALENDAR: CalendarSettings = {
   dateFormat: "dmy",
   timeFormat24: false,
 };
+
+/** v1.5 — the one canonical fallback for "week starts on". Every `?? 6`
+ *  scattered across the codebase used to be its own silent Saturday. */
+export const DEFAULT_FIRST_DAY: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 6;
 
 export const DEFAULT_PRAYER: PrayerSettings = DEFAULT_PRAYER_SETTINGS;
 
@@ -114,13 +125,3 @@ export function defaultPeriodSettings(): PeriodSetting[] {
     },
   ];
 }
-
-export const PERIOD_EMPTY_COPY: Record<string, string> = {
-  Morning: "Open space for whatever the morning brings.",
-  Midday: "Room for whatever matters midday.",
-  Afternoon: "Open space, nothing waiting.",
-  Evening: "Quiet room for the evening.",
-  Night: "Leave the night open.",
-};
-
-export const DEFAULT_EMPTY_COPY = "Open space for whatever the day brings.";

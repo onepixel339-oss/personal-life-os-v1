@@ -18,6 +18,7 @@ import {
 } from "@/lib/lifeos/hooks";
 import { addDays, dayOfWeek, formatWeekRange, weekdayName, weekStart } from "@/lib/lifeos/dates";
 import { run } from "@/lib/lifeos/run";
+import { DEFAULT_FIRST_DAY } from "@/lib/lifeos/defaults";
 import { saveReview } from "@/lib/lifeos/services/review-service";
 import { addEntryToWeek } from "@/lib/lifeos/services/planning-service";
 import {
@@ -42,7 +43,7 @@ export function ReviewScreen() {
   const { t, lang } = useT();
   const fmtNum = (n: number) =>
     lang === "ar" ? toArabicDigits(String(n)) : String(n);
-  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
+  const firstDay = prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
   const data = useReviewData(reviewWeekStart);
   const weekly = useWeeklyData(reviewWeekStart, firstDay);
   const [answers, setAnswers] = useState<WeeklyReviewAnswers>({});

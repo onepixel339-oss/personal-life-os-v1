@@ -24,8 +24,15 @@ import { useUIStore } from "@/lib/lifeos/ui-store";
 import { useInboxData, useViewPrefs } from "@/lib/lifeos/hooks";
 import { run } from "@/lib/lifeos/run";
 import { capture } from "@/lib/lifeos/services/inbox-service";
-import { moveInboxItemToSpace, addInboxItemToToday, addInboxItemToWeek } from "@/lib/lifeos/services/inbox-service";
-import { archiveItem, changeItemType } from "@/lib/lifeos/services/item-service";
+import { DEFAULT_FIRST_DAY, SETTING_KEYS } from "@/lib/lifeos/defaults";
+import {
+  archiveInboxItem,
+  moveInboxItemToSpace,
+  addInboxItemToToday,
+  addInboxItemToWeek,
+} from "@/lib/lifeos/services/inbox-service";
+import { changeItemType } from "@/lib/lifeos/services/item-service";
+import { convertToEntertainment } from "@/lib/lifeos/services/entertainment-service";
 import type { Item, ItemType } from "@/lib/lifeos/types";
 import { typeLabel, useT } from "@/lib/lifeos/i18n";
 import { formatDate, todayLocal } from "@/lib/lifeos/dates";
@@ -40,6 +47,7 @@ import {
   DeleteItemDialog,
   MoveToSpaceDialog,
 } from "../shared/dialogs";
+import { CoachLine } from "../shared/coach-line";
 import { toast } from "sonner";
 
 export function InboxScreen() {
@@ -70,6 +78,11 @@ export function InboxScreen() {
       <PageHeader
         title={t("inbox.title")}
         subtitle={t("inbox.subtitle")}
+      />
+
+      <CoachLine
+        settingKey={SETTING_KEYS.coachInbox}
+        messageKey="coach.inbox"
       />
 
       <Card className="mb-4 px-3.5 py-3 md:px-5">
@@ -207,7 +220,7 @@ function InboxRowMenu({
   const prefs = useViewPrefs();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { t } = useT();
-  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
+  const firstDay = prefs?.calendar.firstDayOfWeek ?? DEFAULT_FIRST_DAY;
   const openItem = useUIStore((s) => s.openItem);
   return (
     <>
@@ -260,25 +273,13 @@ function InboxRowMenu({
                 key={type}
                 onClick={async () => {
                   if (type === "entertainment") {
-                    const { createMedia } = await import(
-                      "@/lib/lifeos/services/entertainment-service"
+                    // v1.5: same item, new nature — identity preserved and a
+                    // quiet undo (the old path permanently deleted the
+                    // original and created a replacement, trail-less).
+                    await run(
+                      convertToEntertainment(item.id),
+                      { success: t("inbox.nowEntertainment", { title: item.title }) }
                     );
-                    const res = await run(
-                      createMedia({
-                        title: item.title,
-                        mediaType: "series",
-                        progressStatus: "planned",
-                      }),
-                      { quiet: true }
-                    );
-                    if (res.ok) {
-                      const { deleteItemPermanently } = await import(
-                        "@/lib/lifeos/services/item-service"
-                      );
-                      await deleteItemPermanently(item.id);
-                      const { toast } = await import("sonner");
-                      toast(t("inbox.nowEntertainment", { title: item.title }));
-                    }
                   } else {
                     await run(changeItemType(item.id, type), { quiet: true });
                     const { toast } = await import("sonner");
@@ -293,7 +294,10 @@ function InboxRowMenu({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={async () => {
-              await run(archiveItem(item.id), { success: t("inbox.archivedToast") });
+              // v1.5: the inbox entry leaves WITH the item (no ghost row).
+              await run(archiveInboxItem(item.id), {
+                success: t("inbox.archivedToast"),
+              });
             }}
           >
             {t("weekly.archive")}
