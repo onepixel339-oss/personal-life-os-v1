@@ -77,8 +77,6 @@ export function WeeklyScreen() {
   const setWeekStartDate = useUIStore((s) => s.setWeekStartDate);
   const setReviewWeek = useUIStore((s) => s.setReviewWeek);
   const openItem = useUIStore((s) => s.openItem);
-  const setTodayDate = useUIStore((s) => s.setTodayDate);
-  const navigate = useUIStore((s) => s.navigate);
   const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const prefs = useViewPrefs();
   const { t } = useT();
@@ -214,7 +212,6 @@ export function WeeklyScreen() {
                   days={data.days}
                   dateFormat={dateFormat}
                   isPastWeek={data.weekEnd < realToday}
-                  weekStart={weekStartDate}
                 />
               </li>
             ))}
@@ -267,7 +264,6 @@ export function WeeklyScreen() {
                           days={data.days}
                           dateFormat={dateFormat}
                           isPastWeek={data.weekEnd < realToday}
-                          weekStart={weekStartDate}
                         />
                       </li>
                     ))}
@@ -280,7 +276,6 @@ export function WeeklyScreen() {
       ) : (
         <WeeklyTimeline
           data={data}
-          dateFormat={dateFormat}
           realToday={realToday}
           isPastWeek={data.weekEnd < realToday}
         />
@@ -344,18 +339,18 @@ function WeeklyRowItem({
   days,
   dateFormat,
   isPastWeek,
-  weekStart,
 }: {
   row: WeeklyRow;
   days: string[];
   dateFormat: string;
   isPastWeek: boolean;
-  weekStart: string;
 }) {
   const openItem = useUIStore((s) => s.openItem);
-  const setTodayDate = useUIStore((s) => s.setTodayDate);
-  const navigate = useUIStore((s) => s.navigate);
   const { t } = useT();
+  // v1.4: the add-to-week dialog follows the "week starts on" setting
+  // instead of a hardcoded Saturday anchor.
+  const prefs = useViewPrefs();
+  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
   const [addToday, setAddToday] = useState(false);
   const [addWeek, setAddWeek] = useState(false);
   const showChoose = isPastWeek && row.item.status !== "completed" && row.item.status !== "cancelled";
@@ -517,7 +512,7 @@ function WeeklyRowItem({
         open={addWeek}
         onOpenChange={setAddWeek}
         itemTitle={row.item.title}
-        firstDayOfWeek={6}
+        firstDayOfWeek={firstDay}
         onConfirm={async (targetWeek) => {
           await run(
             addEntryToWeek({ weekStartDate: targetWeek, itemId: row.item.id }),
@@ -564,12 +559,10 @@ function SubtaskSummary({ outcomeId }: { outcomeId: string }) {
 
 function WeeklyTimeline({
   data,
-  dateFormat,
   realToday,
   isPastWeek,
 }: {
   data: NonNullable<ReturnType<typeof useWeeklyData>>;
-  dateFormat: string;
   realToday: string;
   isPastWeek: boolean;
 }) {

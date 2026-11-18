@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/components/lifeos/app-shell";
+import { AppErrorBoundary } from "@/components/lifeos/shared/error-boundary";
 import { useI18nStore } from "@/lib/lifeos/i18n";
 
 function Splash() {
@@ -52,7 +53,11 @@ export default function Home() {
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <AppShell />
+      {/* v1.4: the last-resort net — a shell-level crash gets a calm
+          message and a reload instead of a white screen */}
+      <AppErrorBoundary>
+        <AppShell />
+      </AppErrorBoundary>
       <LocalizedToaster />
     </ThemeProvider>
   );

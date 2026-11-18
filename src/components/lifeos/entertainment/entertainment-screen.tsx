@@ -24,7 +24,7 @@ import {
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { useEntertainment } from "@/lib/lifeos/hooks";
 import { run } from "@/lib/lifeos/run";
-import { mediaTypeLabel, progressLabel, t, useT } from "@/lib/lifeos/i18n";
+import { mediaTypeLabel, progressLabel, useT } from "@/lib/lifeos/i18n";
 import { createMedia } from "@/lib/lifeos/services/entertainment-service";
 import type { MediaType } from "@/lib/lifeos/types";
 import {

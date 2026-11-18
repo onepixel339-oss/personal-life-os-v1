@@ -35,7 +35,6 @@ import { cn } from "@/lib/utils";
 
 export function NotesScreen() {
   const notes = useNotes();
-  const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const { t } = useT();
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
@@ -196,7 +195,7 @@ function returnSubtitle(settings?: {
 
 function snippet(content: string): string {
   if (!content) return t("notes.emptyNote");
-  return content.replace(/[#*`>\-]/g, "").slice(0, 90) || t("notes.emptyNote");
+  return content.replace(/[#*`>-]/g, "").slice(0, 90) || t("notes.emptyNote");
 }
 
 function NoteRow({ item, subtitle }: { item: Item; subtitle: string }) {
@@ -233,7 +232,7 @@ export function NoteEditorScreen({ itemId }: { itemId: string }) {
   const [format, setFormat] = useState<"plain" | "markdown">("markdown");
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [returnOpen, setReturnOpen] = useState(false);
-  const [rTitle, setRTitle] = useState("");
+  const [, setRTitle] = useState("");
   const [rTrigger, setRTrigger] = useState("app_open");
   const [rTargetId, setRTargetId] = useState("none");
   const [rDate, setRDate] = useState(todayLocal());

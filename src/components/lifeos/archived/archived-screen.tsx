@@ -2,13 +2,12 @@
 
 "use client";
 
-import { useState } from "react";
 import { ArchiveRestore } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { useArchivedItems } from "@/lib/lifeos/hooks";
 import { run } from "@/lib/lifeos/run";
-import { t, useT } from "@/lib/lifeos/i18n";
+import { useT } from "@/lib/lifeos/i18n";
 import { restoreItem } from "@/lib/lifeos/services/item-service";
 import { restoreSpace } from "@/lib/lifeos/services/space-service";
 import {

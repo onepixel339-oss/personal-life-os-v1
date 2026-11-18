@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Moon, Plus, RefreshCw, Sunrise } from "lucide-react";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import {
@@ -48,7 +48,6 @@ import { cn } from "@/lib/utils";
 export function TodayScreen() {
   const todayDate = useUIStore((s) => s.todayDate);
   const setTodayDate = useUIStore((s) => s.setTodayDate);
-  const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const navigate = useUIStore((s) => s.navigate);
   const data = useTodayData(todayDate);
   const prefs = useViewPrefs();

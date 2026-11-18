@@ -72,19 +72,16 @@ export async function buildIndex(): Promise<void> {
     links,
     noteRows,
     projectRows,
-    entRows,
   ] = await Promise.all([
     db.items.toArray(),
     db.spaces.toArray(),
     db.itemSpaceLinks.toArray(),
     db.noteDetails.toArray(),
     db.projectDetails.toArray(),
-    db.entertainmentDetails.toArray(),
   ]);
   const spaceById = new Map(spaces.map((s) => [s.id, s]));
   const noteByItem = new Map(noteRows.map((n) => [n.itemId, n]));
   const projectByItem = new Map(projectRows.map((p) => [p.itemId, p]));
-  const entByItem = new Map(entRows.map((e) => [e.itemId, e]));
   const docs: SearchDoc[] = [];
   for (const item of items) {
     const spaceNames = links
@@ -94,7 +91,6 @@ export async function buildIndex(): Promise<void> {
       .join(" ");
     const note = noteByItem.get(item.id);
     const project = projectByItem.get(item.id);
-    const ent = entByItem.get(item.id);
     docs.push({
       id: `item:${item.id}`,
       kind: "item",

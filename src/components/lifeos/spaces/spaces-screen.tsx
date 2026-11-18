@@ -43,7 +43,7 @@ import {
 } from "@/lib/lifeos/services/space-service";
 import { removeSpaceLink } from "@/lib/lifeos/services/item-service";
 import type { Item, Space } from "@/lib/lifeos/types";
-import { t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { typeLabel, useT } from "@/lib/lifeos/i18n";
 import {
   Card,
   Chip,
@@ -66,7 +66,6 @@ void COPY_SUGGESTIONS_EN;
 
 export function SpacesScreen() {
   const spaces = useSpaces();
-  const navigate = useUIStore((s) => s.navigate);
   const openQuickAdd = useUIStore((s) => s.openQuickAdd);
   const { t } = useT();
   const [createOpen, setCreateOpen] = useState(false);

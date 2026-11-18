@@ -15,8 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useRoutines, useViewPrefs } from "@/lib/lifeos/hooks";
+import { useRoutines } from "@/lib/lifeos/hooks";
 import { run } from "@/lib/lifeos/run";
 import { todayLocal } from "@/lib/lifeos/dates";
 import {
@@ -30,7 +29,7 @@ import {
   startRoutine,
 } from "@/lib/lifeos/services/routine-service";
 import type { Routine, RoutineExecutionStep } from "@/lib/lifeos/types";
-import { t, useT } from "@/lib/lifeos/i18n";
+import { useT } from "@/lib/lifeos/i18n";
 import {
   Card,
   Chip,

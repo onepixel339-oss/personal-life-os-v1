@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRightLeft,
   CalendarDays,
@@ -60,7 +60,7 @@ import {
 import { pushUndo, type UndoCommand } from "@/lib/lifeos/services/history-service";
 import { db } from "@/lib/lifeos/db";
 import { formatDate, formatTime, isValidDateString } from "@/lib/lifeos/dates";
-import { periodName, t, useT } from "@/lib/lifeos/i18n";
+import { periodName, useT } from "@/lib/lifeos/i18n";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { cn } from "@/lib/utils";
 import { Chip, ExecutionMark } from "../shared/primitives";

@@ -12,8 +12,7 @@ import {
   getRecentSearches,
 } from "@/lib/lifeos/services/settings-service";
 import { capture } from "@/lib/lifeos/services/inbox-service";
-import { useViewPrefs } from "@/lib/lifeos/hooks";
-import { t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { typeLabel, useT } from "@/lib/lifeos/i18n";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
 import { toast } from "sonner";

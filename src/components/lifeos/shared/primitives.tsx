@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ExecutionStatus, ItemType, ItemStatus } from "@/lib/lifeos/types";
-import { statusLabel, t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { statusLabel, typeLabel, useT } from "@/lib/lifeos/i18n";
 
 /* ---------- execution status control (§15.3) ---------- */
 

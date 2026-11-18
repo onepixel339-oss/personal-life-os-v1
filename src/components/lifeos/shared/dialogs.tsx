@@ -24,7 +24,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
 import { addDays, formatDate, formatTime, isValidDateString, todayLocal } from "@/lib/lifeos/dates";
 import type { Item, PeriodSetting } from "@/lib/lifeos/types";
-import { typeLabel, t } from "@/lib/lifeos/i18n";
+import { typeLabel, periodName, t } from "@/lib/lifeos/i18n";
 import { EmptyState } from "./primitives";
 import { getDeleteImpact } from "@/lib/lifeos/services/item-service";
 import { formatWeekRange } from "@/lib/lifeos/dates";
@@ -264,7 +264,7 @@ export function AddToTodayDialog({
                   <SelectItem value="none">{t("dialog.noPeriod")}</SelectItem>
                   {(periodSettings ?? []).map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.name}
+                      {periodName(p.name)}
                     </SelectItem>
                   ))}
                 </SelectContent>

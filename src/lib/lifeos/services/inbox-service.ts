@@ -96,12 +96,16 @@ export async function moveInboxItemToSpace(
   }
 }
 
-/** Inbox → Today: DailyEntry + optional inbox removal, one transaction (§3.4). */
+/** Inbox → Today: DailyEntry + optional inbox removal, one transaction (§3.4).
+ *  v1.4: `periodSettingId` (from the add-to-day dialog) maps the entry onto
+ *  the day's period snapshot — the silent drop of the user's period choice
+ *  is closed at the service layer, where every caller gets it for free. */
 export async function addInboxItemToToday(
   itemId: string,
   opts: {
     date: string;
     periodId?: string;
+    periodSettingId?: string;
     startTime?: string;
     alsoRemoveFromInbox?: boolean;
   }
@@ -120,6 +124,10 @@ export async function addInboxItemToToday(
       return res as Result<{ removedFromInbox: boolean }>;
     }
     return res as Result<{ removedFromInbox: boolean }>;
+  }
+  if (opts.periodSettingId) {
+    const { setEntryPeriodBySetting } = await import("./planning-service");
+    await setEntryPeriodBySetting(res.value.id, opts.periodSettingId);
   }
   if (alsoRemove) {
     try {

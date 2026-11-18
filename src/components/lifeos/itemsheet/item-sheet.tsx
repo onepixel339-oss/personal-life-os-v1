@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  Bookmark,
   BookmarkPlus,
   CalendarPlus,
   CalendarRange,
@@ -59,7 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { db } from "@/lib/lifeos/db";
-import { useItemDetail } from "@/lib/lifeos/hooks";
+import { useItemDetail, useViewPrefs } from "@/lib/lifeos/hooks";
 import { useUIStore } from "@/lib/lifeos/ui-store";
 import { run } from "@/lib/lifeos/run";
 import { todayLocal } from "@/lib/lifeos/dates";
@@ -73,7 +72,6 @@ import {
   addItemToSpace,
   archiveItem,
   changeItemType,
-  deleteItemPermanently,
   keepForLater,
   postponeItem,
   removeSpaceLink,
@@ -108,13 +106,16 @@ const TYPE_OPTIONS: ItemType[] = [
 ];
 
 export function ItemSheet() {
+  // v1.4: the week anchor follows the user's "week starts on" setting —
+  // both dialogs below used to hardcode Saturday (6).
+  const prefs = useViewPrefs();
+  const firstDayOfWeek = prefs?.calendar.firstDayOfWeek ?? 6;
   const itemId = useUIStore((s) => s.itemSheetItemId);
   const closeItem = useUIStore((s) => s.closeItem);
   const openItem = useUIStore((s) => s.openItem);
   const navigate = useUIStore((s) => s.navigate);
   const setTodayDate = useUIStore((s) => s.setTodayDate);
   const detail = useItemDetail(itemId);
-  const spaces = useLiveQuery(() => db.spaces.filter((s) => !s.archivedAt).toArray(), []);
   const periodSettings = useLiveQuery(
     () => db.periodSettings.orderBy("order").filter((p) => p.enabled).toArray(),
     []
@@ -744,7 +745,7 @@ export function ItemSheet() {
         open={addWeek}
         onOpenChange={setAddWeek}
         itemTitle={item.title}
-        firstDayOfWeek={6}
+        firstDayOfWeek={firstDayOfWeek}
         onConfirm={async (weekStartDate) => {
           const { addEntryToWeek } = await import("@/lib/lifeos/services/planning-service");
           await run(addEntryToWeek({ weekStartDate, itemId: item.id }), {
@@ -798,7 +799,7 @@ export function ItemSheet() {
         open={repeatOpen}
         onOpenChange={setRepeatOpen}
         itemId={item.id}
-        weekAnchor={6}
+        weekAnchor={firstDayOfWeek}
       />
       <PostponeDialog
         open={postponeOpen}
@@ -839,21 +840,30 @@ function RelList({
       ) : (
         <ul className="mt-0.5 flex flex-wrap gap-1">
           {items.map((i) => (
-            <li key={i.id}>
-              <Chip onClick={() => onOpen(i.id)} title="Open">
+            <li
+              key={i.id}
+              className="inline-flex max-w-full items-center truncate rounded-full border border-border bg-surface text-ink-soft"
+            >
+              <button
+                type="button"
+                title={t("item.openLink")}
+                aria-label={t("item.openLink")}
+                onClick={() => onOpen(i.id)}
+                className="max-w-full truncate px-2.5 py-0.5 text-[11.5px] font-medium transition-colors hover:text-ink"
+              >
                 {i.title}
-                <button
-                  type="button"
-                  aria-label="Remove link"
-                  className="ml-0.5 text-muted-foreground/70 hover:text-[#a5533c]"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await onRemove(i.id);
-                  }}
-                >
-                  ×
-                </button>
-              </Chip>
+              </button>
+              <button
+                type="button"
+                aria-label={t("item.removeLink")}
+                title={t("item.removeLink")}
+                className="px-1.5 py-0.5 text-[11.5px] text-muted-foreground/70 hover:text-[#a5533c]"
+                onClick={async () => {
+                  await onRemove(i.id);
+                }}
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>

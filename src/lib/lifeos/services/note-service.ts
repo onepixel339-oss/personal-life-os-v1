@@ -2,7 +2,6 @@
 
 import { db } from "../db";
 import { emitChange } from "../events";
-import { uid } from "../ids";
 import type {
   NoteDetails,
   Result,

@@ -27,9 +27,9 @@ import { useUIStore, type QuickAddContext } from "@/lib/lifeos/ui-store";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/lifeos/db";
 import { todayLocal, weekdayName } from "@/lib/lifeos/dates";
-import { weekStart, addDays } from "@/lib/lifeos/dates";
+import { addDays } from "@/lib/lifeos/dates";
 import type { ItemType, RecurrencePattern } from "@/lib/lifeos/types";
-import { mediaTypeLabel, periodName, t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { mediaTypeLabel, periodName, typeLabel, useT } from "@/lib/lifeos/i18n";
 import { run } from "@/lib/lifeos/run";
 import { createItem } from "@/lib/lifeos/services/item-service";
 import { addItemToSpace } from "@/lib/lifeos/services/item-service";
@@ -57,7 +57,6 @@ export function QuickAddSheet() {
   const open = useUIStore((s) => s.quickAddOpen);
   const context = useUIStore((s) => s.quickAddContext);
   const closeQuickAdd = useUIStore((s) => s.closeQuickAdd);
-  const openItem = useUIStore((s) => s.openItem);
   const prefs = useViewPrefs();
   const { t } = useT();
 

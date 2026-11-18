@@ -20,16 +20,12 @@ import { addDays, localDayStartMs, todayLocal, weekStart } from "./dates";
 import type {
   DailyEntry,
   DailyPeriod,
-  DailyPlan,
   EntertainmentDetails,
   Item,
   NoteDetails,
   Occurrence,
   PeriodSetting,
-  RecurrenceRule,
-  ResolvedPeriod,
   ReturnNoteSettings,
-  Routine,
   Space,
   WeeklyEntry,
   WeeklyPlan,
@@ -46,14 +42,6 @@ export interface ViewPrefs {
   weeklyView: "list" | "timeline";
   inboxBadge: boolean;
 }
-
-const FALLBACK_PREFS: ViewPrefs = {
-  calendar: { firstDayOfWeek: 6, dateFormat: "dmy", timeFormat24: false },
-  prayer: DEFAULT_PRAYER,
-  todayView: "list",
-  weeklyView: "list",
-  inboxBadge: true,
-};
 
 export function useViewPrefs(): ViewPrefs | undefined {
   return useLiveQuery(async () => {
@@ -484,7 +472,6 @@ export function useArchivedItems() {
     const items = await db.items.toArray();
     const spaces = await db.spaces.toArray();
     const inbox = await db.inboxEntries.toArray();
-    const inboxIds = new Set(inbox.map((e) => e.itemId));
     return {
       items: items.filter((i) => i.status === "archived" || i.archivedAt),
       spaces: spaces.filter((s) => s.archivedAt),

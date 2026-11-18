@@ -25,7 +25,7 @@ import {
   densityLevel,
   type WeekStrip,
 } from "@/lib/lifeos/services/week-strip";
-import { periodName, t, useT } from "@/lib/lifeos/i18n";
+import { periodName, useT } from "@/lib/lifeos/i18n";
 import { toArabicDigits } from "@/lib/lifeos/lang-state";
 import type { PeriodSetting, WeeklyReviewAnswers } from "@/lib/lifeos/types";
 import type { InsightSentence } from "@/lib/lifeos/services/review-insights";

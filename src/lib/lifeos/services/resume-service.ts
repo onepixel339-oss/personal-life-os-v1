@@ -110,7 +110,7 @@ export function computeSuggestions(input: ResumeInput): ResumeSuggestion[] {
     const key = `returnNote:${settings.noteItemId}:${input.today}`;
     if (isHidden(key)) continue;
     let eligible = false;
-    let message = "A note you wanted to come back to.";
+    const message = "A note you wanted to come back to.";
     if (settings.trigger === "app_open" && input.trigger.kind === "app_open") {
       eligible = true;
     } else if (
@@ -275,7 +275,7 @@ export async function dismissSuggestion(
 /* ---------- helpers used by the Today hook to gather inputs ---------- */
 
 export async function gatherResumeInput(
-  trigger: ResumeTrigger
+  _trigger: ResumeTrigger
 ): Promise<Omit<ResumeInput, "today" | "now" | "trigger">> {
   const [
     markers,

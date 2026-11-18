@@ -25,7 +25,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -46,7 +45,7 @@ import {
   rt,
   useT,
 } from "@/lib/lifeos/i18n";
-import { useUIStore, type SettingsSection } from "@/lib/lifeos/ui-store";
+import type { SettingsSection } from "@/lib/lifeos/ui-store";
 import { run } from "@/lib/lifeos/run";
 import { db, getSetting } from "@/lib/lifeos/db";
 import { SETTING_KEYS } from "@/lib/lifeos/defaults";
@@ -62,7 +61,6 @@ import {
 } from "@/lib/lifeos/services/settings-service";
 import {
   CALC_METHOD_LABELS,
-  DEFAULT_MANUAL_TIMES,
   EGYPT_CITIES,
   PRAYER_KEYS,
   type CalcMethod,
@@ -76,8 +74,12 @@ import { emitChange } from "@/lib/lifeos/events";
 import { defaultPeriodSettings } from "@/lib/lifeos/defaults";
 import {
   createAutoBackup,
+  decryptBackupFile,
   downloadBackup,
+  downloadEncryptedBackup,
+  ENC_PASSWORD_MIN,
   getStorageInfo,
+  isEncryptedBackupFile,
   listAutoBackups,
   restoreAutoBackup,
   undoRestore,
@@ -104,6 +106,14 @@ import {
   SectionLabel,
 } from "../shared/primitives";
 import { ConfirmDialog } from "../shared/dialogs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -797,7 +807,7 @@ function parseAnchor(value: string, current: Anchor | undefined, isEnd = false):
 function PeriodPreview() {
   const settings = usePeriodSettings();
   const prefs = useViewPrefs();
-  const { t } = useT();
+  useT();
   const preview = useMemo(() => {
     if (!settings || !prefs) return null;
     const { times } = resolvePrayerTimes(todayLocal(), prefs.prayer);
@@ -938,7 +948,7 @@ function PrayerSection() {
                     ...draft,
                     calculated: {
                       ...draft.calculated,
-                      latitude: Number(e.target.value.replace(/[^0-9.\-]/g, "")) || 0,
+                      latitude: Number(e.target.value.replace(/[^0-9.-]/g, "")) || 0,
                       city: undefined,
                     },
                   })
@@ -956,7 +966,7 @@ function PrayerSection() {
                     ...draft,
                     calculated: {
                       ...draft.calculated,
-                      longitude: Number(e.target.value.replace(/[^0-9.\-]/g, "")) || 0,
+                      longitude: Number(e.target.value.replace(/[^0-9.-]/g, "")) || 0,
                       city: undefined,
                     },
                   })
@@ -1088,7 +1098,7 @@ function PrayerSection() {
                         ...draft.calculated,
                         corrections: {
                           ...draft.calculated.corrections,
-                          [k]: Number(e.target.value.replace(/[^0-9\-]/g, "")) || 0,
+                          [k]: Number(e.target.value.replace(/[^0-9-]/g, "")) || 0,
                         },
                       },
                     })
@@ -1446,13 +1456,70 @@ function DataSection() {
   const [info, setInfo] = useState<StorageInfo | null>(null);
   const [validation, setValidation] = useState<(ValidationSummary & { data: Record<string, unknown[]>; settings?: Record<string, unknown> }) | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
-  const [lastBackup, setLastBackup] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
   const [autos, setAutos] = useState<AutoBackupMeta[]>([]);
   const [autoRestoreId, setAutoRestoreId] = useState<string | null>(null);
   // v1.2: monthly export nudge + local error log
   const [nudge, setNudge] = useState(false);
   const [errors, setErrors] = useState<ErrorLogEntry[] | null>(null);
+  // v1.4: encrypted export — password dialog state
+  const [encOpen, setEncOpen] = useState(false);
+  const [encPass, setEncPass] = useState("");
+  const [encConfirm, setEncConfirm] = useState("");
+  const [encErr, setEncErr] = useState<string | null>(null);
+  const [encBusy, setEncBusy] = useState(false);
+  // v1.4: encrypted import — unlock dialog state (holds the file text)
+  const [encFileFor, setEncFileFor] = useState<string | null>(null);
+  const [encUnlockPass, setEncUnlockPass] = useState("");
+  const [encUnlockErr, setEncUnlockErr] = useState<string | null>(null);
+  const [encUnlockBusy, setEncUnlockBusy] = useState(false);
+
+  const submitEncExport = async () => {
+    if (encPass.length < ENC_PASSWORD_MIN) {
+      setEncErr(t("data.encErrShort"));
+      return;
+    }
+    if (encPass !== encConfirm) {
+      setEncErr(t("data.encErrMismatch"));
+      return;
+    }
+    setEncBusy(true);
+    try {
+      const res = await run(downloadEncryptedBackup(encPass, true), { quiet: true });
+      if (res.ok) {
+        toast(t("data.encSavedToast", { filename: res.value.filename }));
+        setNudge(false);
+        setEncOpen(false);
+        refresh();
+      } else {
+        setEncErr(rt(res.error.message));
+      }
+    } finally {
+      setEncBusy(false);
+    }
+  };
+
+  const submitEncUnlock = async () => {
+    if (!encFileFor || !encUnlockPass) return;
+    setEncUnlockBusy(true);
+    try {
+      const res = await decryptBackupFile(encFileFor, encUnlockPass);
+      if (!res.ok) {
+        setEncUnlockErr(rt(res.error.message));
+        return;
+      }
+      const validated = await validateBackupFile(res.value);
+      if (!validated.ok) {
+        toast.error(rt(validated.error.message));
+        setEncFileFor(null);
+        return;
+      }
+      setValidation(validated.value);
+      setEncFileFor(null);
+    } finally {
+      setEncUnlockBusy(false);
+    }
+  };
 
   const DAY = 24 * 60 * 60 * 1000;
 
@@ -1548,6 +1615,18 @@ function DataSection() {
           >
             <Download className="h-4 w-4" /> {t("data.export")}
           </Button>
+          <Button
+            variant="outline"
+            className="rounded-full border-border bg-surface"
+            onClick={() => {
+              setEncPass("");
+              setEncConfirm("");
+              setEncErr(null);
+              setEncOpen(true);
+            }}
+          >
+            <Lock className="h-4 w-4" /> {t("data.exportEncrypted")}
+          </Button>
           <label className="inline-flex">
             <input
               type="file"
@@ -1569,6 +1648,13 @@ function DataSection() {
                   // after picking it) — never leave the user without feedback
                   console.error("backup file read failed", readError);
                   toast.error(t("data.unreadableFile"));
+                  return;
+                }
+                // v1.4: encrypted file → the unlock dialog; plain file → as before
+                if (isEncryptedBackupFile(text)) {
+                  setEncUnlockPass("");
+                  setEncUnlockErr(null);
+                  setEncFileFor(text);
                   return;
                 }
                 const res = await validateBackupFile(text);
@@ -1906,7 +1992,137 @@ function DataSection() {
           }
         }}
       />
-      <span className="hidden">{lastBackup}</span>
+
+      {/* v1.4 — encrypted export: choose a password, get a sealed file */}
+      <Dialog open={encOpen} onOpenChange={setEncOpen}>
+        <DialogContent className="max-w-md rounded-2xl border-border bg-surface-raised">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-lg">
+              {t("data.encTitle")}
+            </DialogTitle>
+            <DialogDescription className="text-[13.5px] leading-relaxed">
+              {t("data.encDesc")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">
+                {t("data.encPassword")}
+              </span>
+              <Input
+                type="password"
+                dir="auto"
+                value={encPass}
+                onChange={(e) => {
+                  setEncPass(e.target.value);
+                  setEncErr(null);
+                }}
+                className="rounded-xl border-border bg-surface"
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">
+                {t("data.encConfirm")}
+              </span>
+              <Input
+                type="password"
+                dir="auto"
+                value={encConfirm}
+                onChange={(e) => {
+                  setEncConfirm(e.target.value);
+                  setEncErr(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void submitEncExport();
+                }}
+                className="rounded-xl border-border bg-surface"
+              />
+            </label>
+            {encErr ? (
+              <p className="text-[12.5px] text-[#a5533c]" role="alert">
+                {encErr}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setEncOpen(false)}
+              className="rounded-full"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={encBusy || !encPass || !encConfirm}
+              onClick={() => void submitEncExport()}
+              className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
+            >
+              <Lock className="h-4 w-4" /> {t("data.encDo")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* v1.4 — encrypted import: unlock the file with its password */}
+      <Dialog
+        open={encFileFor !== null}
+        onOpenChange={(o) => {
+          if (!o) setEncFileFor(null);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border bg-surface-raised">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-lg">
+              {t("data.encOpenTitle")}
+            </DialogTitle>
+            <DialogDescription className="text-[13.5px] leading-relaxed">
+              {t("data.encOpenDesc")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <label className="grid gap-1.5">
+              <span className="text-[12px] font-medium text-ink-soft">
+                {t("data.encPassword")}
+              </span>
+              <Input
+                type="password"
+                dir="auto"
+                autoFocus
+                value={encUnlockPass}
+                onChange={(e) => {
+                  setEncUnlockPass(e.target.value);
+                  setEncUnlockErr(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void submitEncUnlock();
+                }}
+                className="rounded-xl border-border bg-surface"
+              />
+            </label>
+            {encUnlockErr ? (
+              <p className="text-[12.5px] text-[#a5533c]" role="alert">
+                {encUnlockErr}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setEncFileFor(null)}
+              className="rounded-full"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={encUnlockBusy || !encUnlockPass}
+              onClick={() => void submitEncUnlock()}
+              className="rounded-full bg-primary text-primary-foreground hover:bg-primary-deep"
+            >
+              <LockOpen className="h-4 w-4" /> {t("data.encUnlock")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

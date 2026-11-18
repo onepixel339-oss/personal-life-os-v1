@@ -27,7 +27,7 @@ import { capture } from "@/lib/lifeos/services/inbox-service";
 import { moveInboxItemToSpace, addInboxItemToToday, addInboxItemToWeek } from "@/lib/lifeos/services/inbox-service";
 import { archiveItem, changeItemType } from "@/lib/lifeos/services/item-service";
 import type { Item, ItemType } from "@/lib/lifeos/types";
-import { t, typeLabel, useT } from "@/lib/lifeos/i18n";
+import { typeLabel, useT } from "@/lib/lifeos/i18n";
 import { formatDate, todayLocal } from "@/lib/lifeos/dates";
 import {
   Card,
@@ -47,9 +47,7 @@ export function InboxScreen() {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const openItem = useUIStore((s) => s.openItem);
-  const prefs = useViewPrefs();
   const { t } = useT();
-  const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
 
   const [spaceFor, setSpaceFor] = useState<Item | null>(null);
   const [todayFor, setTodayFor] = useState<Item | null>(null);
@@ -182,16 +180,13 @@ export function InboxScreen() {
           const res = await run(
             addInboxItemToToday(todayFor.id, {
               date: choice.date,
+              periodSettingId: choice.periodSettingId,
               startTime: choice.startTime,
               alsoRemoveFromInbox: true,
             }),
             { quiet: true }
           );
           if (res.ok) {
-            const { addEntryToDay: _unused } = await import(
-              "@/lib/lifeos/services/planning-service"
-            );
-            void _unused;
             toast(t("inbox.placedOnToast", { date: formatDate(choice.date) }));
           }
         }}
@@ -214,7 +209,6 @@ function InboxRowMenu({
   const { t } = useT();
   const firstDay = prefs?.calendar.firstDayOfWeek ?? 6;
   const openItem = useUIStore((s) => s.openItem);
-  const navigate = useUIStore((s) => s.navigate);
   return (
     <>
       <DropdownMenu>
@@ -240,9 +234,6 @@ function InboxRowMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
-              const { addEntryToWeek } = await import(
-                "@/lib/lifeos/services/planning-service"
-              );
               const [y, m, d] = todayLocal().split("-").map(Number);
               const date = new Date(Date.UTC(y, m - 1, d));
               const dow = date.getUTCDay();

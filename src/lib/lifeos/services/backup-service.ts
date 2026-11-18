@@ -1,5 +1,8 @@
 /* BackupService — human-readable JSON export, validated atomic restore (§11).
-   checksum = SHA-256 over canonical JSON of `data` (Web Crypto). */
+   checksum = SHA-256 over canonical JSON of `data` (Web Crypto).
+   v1.4 — encrypted export: the same payload sealed with AES-GCM, key
+   derived from a user password via PBKDF2 (Web Crypto, zero network).
+   The plaintext path stays exactly as it was — transparency is a feature. */
 
 import { db, getSetting, setSetting } from "../db";
 import { emitChange } from "../events";
@@ -11,7 +14,7 @@ import { err, ok } from "../types";
 
 export const SCHEMA_VERSION = 1;
 export const APP_ID = "personal-life-os";
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 export interface BackupFile {
   app: string;
@@ -85,25 +88,11 @@ export async function exportBackup(
   includeSettings = true
 ): Promise<Result<{ blob: Blob; filename: string }>> {
   try {
-    const { data, counts, settings } = await collectAllStores(includeSettings);
-    const checksum = await computeChecksum(data);
-    const now = new Date();
-    const payload: BackupFile = {
-      app: APP_ID,
-      schemaVersion: SCHEMA_VERSION,
-      exportedAt: now.toISOString(),
-      appVersion: APP_VERSION,
-      counts,
-      checksum,
-      data,
-      settings,
-    };
+    const payload = await buildBackupPayload(includeSettings);
     const json = JSON.stringify(payload, null, 2);
     const blob = new Blob([json], { type: "application/json" });
-    const filename = `life-os-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
-      now.getDate()
-    )}-${pad(now.getHours())}${pad(now.getMinutes())}.json`;
-    await setSetting(SETTING_KEYS.lastBackupAt, now.getTime());
+    const filename = `life-os-backup-${backupStamp(nowFromDate(payload.exportedAt))}.json`;
+    await setSetting(SETTING_KEYS.lastBackupAt, Date.now());
     return ok({ blob, filename });
   } catch (e) {
     console.error(e);
@@ -111,20 +100,236 @@ export async function exportBackup(
   }
 }
 
+/** Build the full BackupFile payload (shared by export & auto-backup &
+    encrypted export). */
+async function buildBackupPayload(includeSettings: boolean): Promise<BackupFile> {
+  const { data, counts, settings } = await collectAllStores(includeSettings);
+  const checksum = await computeChecksum(data);
+  return {
+    app: APP_ID,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    counts,
+    checksum,
+    data,
+    settings,
+  };
+}
+
+function nowFromDate(iso: string): Date {
+  return new Date(iso);
+}
+
+function backupStamp(now: Date): string {
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate()
+  )}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 export async function downloadBackup(
   includeSettings = true
 ): Promise<Result<{ filename: string }>> {
   const res = await exportBackup(includeSettings);
   if (!res.ok) return res;
-  const url = URL.createObjectURL(res.value.blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = res.value.filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  downloadBlob(res.value.blob, res.value.filename);
   return ok({ filename: res.value.filename });
+}
+
+/* ---------- v1.4: encrypted export (AES-GCM + PBKDF2, all local) ----------
+   The envelope is JSON so the file stays inspectable about everything
+   EXCEPT the data itself; AES-GCM's auth tag makes a wrong password and a
+   tampered file fail identically and safely. */
+
+export const ENC_BACKUP_FORMAT = "lifeos-encrypted";
+export const ENC_KDF_ITERATIONS = 600_000;
+export const ENC_PASSWORD_MIN = 8;
+
+export interface EncryptedBackupFile {
+  app: string;
+  format: typeof ENC_BACKUP_FORMAT;
+  formatVersion: 1;
+  appVersion: string;
+  exportedAt: string;
+  kdf: { name: "PBKDF2"; hash: "SHA-256"; iterations: number; salt: string };
+  cipher: { name: "AES-GCM"; iv: string };
+  /** base64 of the AES-GCM ciphertext over the plaintext BackupFile JSON */
+  data: string;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function randomBytes(length: number): Uint8Array {
+  const out = new Uint8Array(length);
+  crypto.getRandomValues(out);
+  return out;
+}
+
+async function deriveAesKey(
+  password: string,
+  salt: Uint8Array,
+  iterations: number,
+  usage: KeyUsage[]
+): Promise<CryptoKey> {
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(`lifeos-backup:${password}`),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt as unknown as BufferSource,
+      iterations,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    usage
+  );
+}
+
+export async function exportEncryptedBackup(
+  password: string,
+  includeSettings = true
+): Promise<Result<{ blob: Blob; filename: string }>> {
+  if (password.length < ENC_PASSWORD_MIN) {
+    return err({
+      code: "validation",
+      message: "The password must be at least 8 characters.",
+    });
+  }
+  try {
+    const payload = await buildBackupPayload(includeSettings);
+    const salt = randomBytes(16);
+    const iv = randomBytes(12);
+    const key = await deriveAesKey(password, salt, ENC_KDF_ITERATIONS, ["encrypt"]);
+    const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+    const sealed = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: iv as unknown as BufferSource },
+      key,
+      plaintext
+    );
+    const envelope: EncryptedBackupFile = {
+      app: APP_ID,
+      format: ENC_BACKUP_FORMAT,
+      formatVersion: 1,
+      appVersion: APP_VERSION,
+      exportedAt: payload.exportedAt,
+      kdf: {
+        name: "PBKDF2",
+        hash: "SHA-256",
+        iterations: ENC_KDF_ITERATIONS,
+        salt: bytesToBase64(salt),
+      },
+      cipher: { name: "AES-GCM", iv: bytesToBase64(iv) },
+      data: bytesToBase64(new Uint8Array(sealed)),
+    };
+    const json = JSON.stringify(envelope, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const filename = `life-os-encrypted-backup-${backupStamp(nowFromDate(payload.exportedAt))}.json`;
+    await setSetting(SETTING_KEYS.lastBackupAt, Date.now());
+    return ok({ blob, filename });
+  } catch (e) {
+    console.error("exportEncryptedBackup failed", e);
+    return err({ code: "write_failed", message: "Couldn't build the encrypted backup file." });
+  }
+}
+
+export async function downloadEncryptedBackup(
+  password: string,
+  includeSettings = true
+): Promise<Result<{ filename: string }>> {
+  const res = await exportEncryptedBackup(password, includeSettings);
+  if (!res.ok) return res;
+  downloadBlob(res.value.blob, res.value.filename);
+  return ok({ filename: res.value.filename });
+}
+
+/** Cheap peek: does this text carry the encrypted envelope? (Never decrypts.) */
+export function isEncryptedBackupFile(text: string): boolean {
+  try {
+    const parsed = JSON.parse(text) as Partial<EncryptedBackupFile>;
+    return parsed?.format === ENC_BACKUP_FORMAT;
+  } catch {
+    return false;
+  }
+}
+
+/** Decrypt an envelope back into the plaintext BackupFile JSON. A wrong
+    password and a tampered file both fail here — AES-GCM authenticates. */
+export async function decryptBackupFile(
+  text: string,
+  password: string
+): Promise<Result<string>> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.error(e);
+    return err({ code: "backup_invalid", message: "That file isn't valid JSON." });
+  }
+  const file = parsed as Partial<EncryptedBackupFile>;
+  if (
+    !file ||
+    file.format !== ENC_BACKUP_FORMAT ||
+    typeof file.data !== "string" ||
+    !file.kdf ||
+    typeof file.kdf.salt !== "string" ||
+    !file.cipher ||
+    typeof file.cipher.iv !== "string"
+  ) {
+    return err({
+      code: "backup_invalid",
+      message: "The encrypted backup file is malformed.",
+    });
+  }
+  try {
+    const key = await deriveAesKey(
+      password,
+      base64ToBytes(file.kdf.salt),
+      file.kdf.iterations || ENC_KDF_ITERATIONS,
+      ["decrypt"]
+    );
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToBytes(file.cipher.iv) as unknown as BufferSource },
+      key,
+      base64ToBytes(file.data) as unknown as BufferSource
+    );
+    return ok(new TextDecoder().decode(plaintext));
+  } catch {
+    // GCM failure = wrong password or tampered bytes — no way to tell,
+    // and no information leaks either way. Keep the message honest & kind.
+    return err({
+      code: "backup_invalid",
+      message: "That password doesn't unlock this file.",
+    });
+  }
 }
 
 /* ---------- v1.3: the weekly backup nudge, decided by data ---------- */

@@ -11,14 +11,17 @@ import { Fingerprint, HeartHandshake, Lock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/lifeos/i18n";
-import { hasPin, verifyPin, wipeEverything } from "@/lib/lifeos/services/pin-service";
+import { toArabicDigits } from "@/lib/lifeos/lang-state";
+import { getPinLockState, hasPin, verifyPin, wipeEverything } from "@/lib/lifeos/services/pin-service";
 import { cn } from "@/lib/utils";
 
 export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  // v1.4 gentle lockout: an honest countdown, never a punishment screen
+  const [lockWait, setLockWait] = useState(0);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,15 +35,27 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
     });
   }, [onUnlocked]);
 
+  // the countdown ticks down on its own — no polling, no timer forest
+  useEffect(() => {
+    if (lockWait <= 0) return;
+    const id = setTimeout(() => setLockWait((w) => Math.max(0, w - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [lockWait]);
+
   const submit = async () => {
-    if (!pin) return;
+    if (!pin || lockWait > 0) return;
     setChecking(true);
     try {
       const good = await verifyPin(pin);
       if (good) {
         onUnlocked();
       } else {
-        setError(t("lock.wrong"));
+        const lock = await getPinLockState();
+        if (lock.retryAfterMs > 0) {
+          setLockWait(Math.ceil(lock.retryAfterMs / 1000));
+        } else {
+          setError(t("lock.wrong"));
+        }
         setPin("");
         inputRef.current?.focus();
       }
@@ -94,14 +109,23 @@ export function LockScreen({ onUnlocked }: { onUnlocked: () => void }) {
                 )}
               />
             </label>
-            {error ? (
+            {lockWait > 0 ? (
+              <p className="mt-2 text-[12.5px] leading-relaxed text-[#8a4a35]" role="alert">
+                {t("lock.locked", {
+                  seconds:
+                    lang === "ar"
+                      ? toArabicDigits(String(lockWait))
+                      : String(lockWait),
+                })}
+              </p>
+            ) : error ? (
               <p className="mt-2 text-[12.5px] text-[#a5533c]" role="alert">
                 {error}
               </p>
             ) : null}
             <Button
               type="submit"
-              disabled={checking || !pin}
+              disabled={checking || !pin || lockWait > 0}
               className="mt-5 h-12 w-full rounded-full bg-primary text-[14.5px] text-primary-foreground hover:bg-primary-deep"
             >
               <Fingerprint className="h-4.5 w-4.5" />

@@ -56,6 +56,7 @@ interface UIState {
   setTodayDate: (date: string) => void;
   syncLifeDay: (lifeDay: string) => void;
   setWeekStartDate: (date: string) => void;
+  setReviewWeekStart: (date: string) => void;
   setReviewWeek: (date: string) => void;
   openItem: (itemId: string) => void;
   closeItem: () => void;
@@ -97,6 +98,9 @@ export const useUIStore = create<UIState>((set, get) => ({
       todayDate: s.todayDate === todayLocal() ? lifeDay : s.todayDate,
     })),
   setWeekStartDate: (date) => set({ weekStartDate: date }),
+  /** Plain anchor update (no navigation) — used by the v1.4 boot re-anchor
+      when the user's "week starts on" setting differs from the seeded 6. */
+  setReviewWeekStart: (date) => set({ reviewWeekStart: date }),
   setReviewWeek: (date) => set({ reviewWeekStart: date, route: { name: "review" } }),
   openItem: (itemId) => set({ itemSheetItemId: itemId }),
   closeItem: () => set({ itemSheetItemId: null }),

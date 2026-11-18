@@ -176,6 +176,30 @@ export async function setSetting(key: string, value: unknown): Promise<void> {
   await db.appSettings.put({ key, value, updatedAt: Date.now() });
 }
 
+/* ---------- v1.4: the activity log grows forever unless someone trims it.
+   The log powers review insights ("a lived week") but nothing needs more
+   than the most recent slice — a bounded log keeps the review fast and the
+   database healthy after months of daily use. ---------- */
+
+export const ACTIVITY_HISTORY_CAP = 5000;
+
+/** Delete the oldest rows beyond `cap` (best-effort, returns rows removed). */
+export async function pruneActivityHistory(
+  cap: number = ACTIVITY_HISTORY_CAP
+): Promise<number> {
+  const count = await db.activityHistory.count();
+  if (count <= cap) return 0;
+  const excess = count - cap;
+  const oldest = await db.activityHistory.orderBy("timestamp").limit(excess).toArray();
+  await db.activityHistory.bulkDelete(oldest.map((r) => r.id));
+  return oldest.length;
+}
+
+/* logActivity writes are frequent; pruning on every write would be waste.
+   Every 25th write quietly trims — the boot prune (app-shell) closes the
+   rest of the gap for users returning after a long time. */
+let writesSincePrune = 0;
+
 export async function logActivity(
   entityType: string,
   entityId: string,
@@ -191,6 +215,15 @@ export async function logActivity(
       timestamp: Date.now(),
       metadata,
     });
+    writesSincePrune += 1;
+    if (writesSincePrune >= 25) {
+      writesSincePrune = 0;
+      try {
+        await pruneActivityHistory();
+      } catch {
+        /* pruning is best-effort — never block the write path */
+      }
+    }
   } catch (e) {
     // history is best-effort; never block user actions — but a failing
     // IndexedDB write is worth seeing in the console.

@@ -18,16 +18,16 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/lib/lifeos/ui-store";
-import { useInboxCount, useLifeToday, useSpaces, useTodayData, useUserName, useViewPrefs, useMinuteTick } from "@/lib/lifeos/hooks";
+import { useInboxCount, useLifeToday, useSpaces, useTodayData, useUserName, useViewPrefs } from "@/lib/lifeos/hooks";
 import { useT, initI18n, rt, t, periodName } from "@/lib/lifeos/i18n";
 import { toArabicDigits } from "@/lib/lifeos/lang-state";
-import { timeToMinutes, nowMinutes, formatTime } from "@/lib/lifeos/dates";
+import { timeToMinutes, nowMinutes, formatTime, weekStart } from "@/lib/lifeos/dates";
 import { ensureSearchStarted } from "@/lib/lifeos/services/search-service";
 import { handleUndoShortcut } from "@/lib/lifeos/services/history-service";
 import { run } from "@/lib/lifeos/run";
 import { capture } from "@/lib/lifeos/services/inbox-service";
 import { SETTING_KEYS, DEFAULT_PRAYER } from "@/lib/lifeos/defaults";
-import { db, getSetting, setSetting } from "@/lib/lifeos/db";
+import { db, getSetting, setSetting, pruneActivityHistory } from "@/lib/lifeos/db";
 import type { PrayerSettings } from "@/lib/lifeos/prayer";
 import { lifeDayFor } from "@/lib/lifeos/day-boundary";
 import { initErrorLogging } from "@/lib/lifeos/error-log";
@@ -62,6 +62,7 @@ import { FridayAlarmCard } from "./shared/friday-alarm-card";
 import { TzHintCard } from "./shared/tz-hint";
 import { RamadanCard } from "./shared/ramadan-card";
 import { BackupNudgeCard } from "./shared/backup-nudge-card";
+import { ScreenErrorBoundary } from "./shared/error-boundary";
 import { cn } from "@/lib/utils";
 
 const PRIMARY = [
@@ -91,6 +92,7 @@ export function AppShell() {
   const searchOpen = useUIStore((s) => s.searchOpen);
   const { t } = useT();
   const userName = useUserName();
+  const prefs = useViewPrefs();
   const [online, setOnline] = useState(true);
   const [welcome, setWelcome] = useState<boolean | null>(null);
   const [makeItYoursOpen, setMakeItYoursOpen] = useState(false);
@@ -125,6 +127,9 @@ export function AppShell() {
     void import("@/lib/lifeos/services/backup-service").then(
       ({ maybeAutoBackup }) => maybeAutoBackup()
     );
+    // v1.4: keep the activity log bounded — a quiet prune at boot, and
+    // logActivity itself trims periodically as it writes.
+    void pruneActivityHistory().catch(() => undefined);
     // v1.3 graduated onboarding: the install hint waits for the first قفلة —
     // "add me to your home screen" makes sense once the daily ritual is real.
     void Promise.all([
@@ -279,6 +284,27 @@ export function AppShell() {
     };
   }, []);
 
+  // v1.4: the week anchor follows the "week starts on" setting. The store
+  // seeds a Saturday-anchored default before IndexedDB answers; once prefs
+  // arrive (or the setting changes), re-anchor — but never drag a user who
+  // has browsed to another week.
+  const firstDay = prefs?.calendar.firstDayOfWeek;
+  const prevFirstDay = useRef<number | null>(null);
+  useEffect(() => {
+    if (firstDay === undefined) return;
+    if (prevFirstDay.current === firstDay) return;
+    prevFirstDay.current = firstDay;
+    const s = useUIStore.getState();
+    const today = s.lifeToday;
+    const stillThisWeek =
+      s.weekStartDate === weekStart(today, 6) || // the seeded default
+      s.weekStartDate === weekStart(today, firstDay);
+    if (!stillThisWeek) return;
+    const anchor = weekStart(today, firstDay);
+    s.setWeekStartDate(anchor);
+    s.setReviewWeekStart(anchor);
+  }, [firstDay]);
+
   // keyboard shortcuts (visible alternatives exist for each)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -306,36 +332,43 @@ export function AppShell() {
   }, [openSearch, searchOpen, t]);
 
   const screen = useMemo(() => {
-    switch (route.name) {
-      case "today":
-        return <TodayScreen />;
-      case "weekly":
-        return <WeeklyScreen />;
-      case "spaces":
-        return <SpacesScreen />;
-      case "space":
-        return <SpaceScreen spaceId={route.spaceId} />;
-      case "inbox":
-        return <InboxScreen />;
-      case "more":
-        return <MoreScreen />;
-      case "notes":
-        return <NotesScreen />;
-      case "note":
-        return <NoteEditorScreen itemId={route.itemId} />;
-      case "entertainment":
-        return <EntertainmentScreen />;
-      case "review":
-        return <ReviewScreen />;
-      case "routines":
-        return <RoutinesScreen />;
-      case "settings":
-        return <SettingsScreen section={route.section} />;
-      case "archived":
-        return <ArchivedScreen />;
-      default:
-        return <TodayScreen />;
-    }
+    const inner = (() => {
+      switch (route.name) {
+        case "today":
+          return <TodayScreen />;
+        case "weekly":
+          return <WeeklyScreen />;
+        case "spaces":
+          return <SpacesScreen />;
+        case "space":
+          return <SpaceScreen spaceId={route.spaceId} />;
+        case "inbox":
+          return <InboxScreen />;
+        case "more":
+          return <MoreScreen />;
+        case "notes":
+          return <NotesScreen />;
+        case "note":
+          return <NoteEditorScreen itemId={route.itemId} />;
+        case "entertainment":
+          return <EntertainmentScreen />;
+        case "review":
+          return <ReviewScreen />;
+        case "routines":
+          return <RoutinesScreen />;
+        case "settings":
+          return <SettingsScreen section={route.section} />;
+        case "archived":
+          return <ArchivedScreen />;
+        default:
+          return <TodayScreen />;
+      }
+    })();
+    // v1.4: one broken screen must never take the shell down with it — a
+    // fresh boundary per route (keyed) so navigating away always starts clean.
+    return (
+      <ScreenErrorBoundary key={route.name}>{inner}</ScreenErrorBoundary>
+    );
   }, [route]);
 
   // Registration gate: `undefined` = still reading local data, `null` = not registered.
@@ -549,7 +582,6 @@ function RailList() {
   const navigate = useUIStore((s) => s.navigate);
   const goToday = useUIStore((s) => s.goToday);
   const { t } = useT();
-  const { setTheme } = useTheme();
   return (
     <div className="flex flex-1 flex-col gap-0.5">
       {PRIMARY.map(({ key, icon: Icon }) => {
@@ -617,7 +649,6 @@ function ContextPanel() {
   const data = useTodayData(lifeToday);
   const spaces = useSpaces();
   const prefs = useViewPrefs();
-  const tick = useMinuteTick();
   const navigate = useUIStore((s) => s.navigate);
   const openItem = useUIStore((s) => s.openItem);
   const setTodayDate = useUIStore((s) => s.setTodayDate);
